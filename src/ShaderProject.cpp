@@ -241,6 +241,51 @@ bool ShaderProject::parseManifestJson(const std::string& jsonContent) {
                 m_manifest.passes.push_back(pass);
             }
         }
+
+        m_manifest.buffers.clear();
+        if (j.contains("buffers") && j["buffers"].is_array()) {
+            for (const auto& bufferJson : j["buffers"]) {
+                ShaderBuffer buffer;
+                buffer.name = bufferJson.value("name", "");
+                buffer.type = bufferJson.value("type", "float");
+                buffer.file = bufferJson.value("file", "");
+                
+                if (bufferJson.contains("data") && bufferJson["data"].is_array()) {
+                    buffer.data = bufferJson["data"].get<std::vector<float>>();
+                }
+                
+                // If a file is specified, load it
+                if (!buffer.file.empty()) {
+                    std::string filePath = m_projectPath + "/" + buffer.file;
+                    if (fs::exists(filePath)) {
+                        std::ifstream csvFile(filePath);
+                        if (csvFile.is_open()) {
+                            std::string line;
+                            buffer.data.clear();
+                            while (std::getline(csvFile, line)) {
+                                if (line.empty() || line[0] == '#') continue;
+                                // Simple CSV/space/tab parsing
+                                std::replace(line.begin(), line.end(), ',', ' ');
+                                std::stringstream ss(line);
+                                float val;
+                                while (ss >> val) {
+                                    buffer.data.push_back(val);
+                                }
+                            }
+                            LOG_DEBUG("Loaded {} values from buffer file: {}", buffer.data.size(), filePath);
+                        } else {
+                            LOG_ERROR("Failed to open buffer file: {}", filePath);
+                        }
+                    } else {
+                        LOG_ERROR("Buffer file does not exist: {}", filePath);
+                    }
+                }
+                
+                if (!buffer.name.empty()) {
+                    m_manifest.buffers.push_back(buffer);
+                }
+            }
+        }
         
         if (m_manifest.passes.empty()) {
             LOG_ERROR("No shader passes found in manifest");
@@ -278,6 +323,19 @@ std::string ShaderProject::generateManifestJson() const {
         }
         passJson["enabled"] = pass.enabled;
         j["passes"].push_back(passJson);
+    }
+
+    j["buffers"] = json::array();
+    for (const auto& buffer : m_manifest.buffers) {
+        json bufferJson;
+        bufferJson["name"] = buffer.name;
+        bufferJson["type"] = buffer.type;
+        if (!buffer.file.empty()) {
+            bufferJson["file"] = buffer.file;
+        } else {
+            bufferJson["data"] = buffer.data;
+        }
+        j["buffers"].push_back(bufferJson);
     }
     
     return j.dump(2);
@@ -386,6 +444,9 @@ bool ShaderProject::loadShadersIntoManager(std::shared_ptr<ShaderManager> shader
     }
     
     RenderScaleMode scaleMode = Settings::getInstance().getRenderScaleMode();
+
+    // Update data buffers first
+    shaderManager->updateBuffers(m_manifest.buffers);
 
     for (const auto& pass : m_manifest.passes) {
         if (!pass.enabled) continue;

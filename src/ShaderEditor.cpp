@@ -562,6 +562,20 @@ void ShaderEditor::setupProjectFileWatching() {
             }
         }
     }
+
+    // Watch buffer data files
+    const auto& buffers = m_currentProject->getManifest().buffers;
+    for (const auto& buffer : buffers) {
+        if (!buffer.file.empty()) {
+            std::filesystem::path projectRoot = std::filesystem::path(m_currentProject->getManifestPath()).parent_path();
+            std::string dataPath = (projectRoot / buffer.file).string();
+            if (std::filesystem::exists(dataPath)) {
+                m_fileWatcher->addWatch(dataPath,
+                    [this](const std::string& path) { onManifestFileChanged(path); });
+                LOG_DEBUG("Watching buffer file: {}", dataPath);
+            }
+        }
+    }
 }
 
 void ShaderEditor::onShaderFileChanged(const std::string& filePath) {

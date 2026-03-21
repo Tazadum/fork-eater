@@ -28,6 +28,13 @@ struct ShaderUniform {
     std::string group;
 };
 
+struct ShaderBuffer {
+    std::string name;
+    std::string type; // "float", "vec2", "vec3", "vec4"
+    std::vector<float> data; // For in-line data
+    std::string file; // For external CSV/data files
+};
+
 class ShaderManager {
 public:
     struct ShaderProgram {
@@ -62,6 +69,9 @@ public:
     // Reload existing shader
     bool reloadShader(const std::string& name, RenderScaleMode scaleMode = RenderScaleMode::Resolution);
     
+    // Update data buffers
+    void updateBuffers(const std::vector<ShaderBuffer>& buffers);
+
     // Get shader program
     std::shared_ptr<ShaderProgram> getShader(const std::string& name);
     
@@ -114,9 +124,18 @@ public:
     const std::unordered_map<std::string, int>& getSliderStates() const;
 
 private:
+    struct InternalBuffer {
+        GLuint tbo;
+        GLuint texture;
+        size_t size;
+        std::string type;
+        std::vector<float> lastData;
+    };
+
     std::unordered_map<std::string, std::shared_ptr<ShaderProgram>> m_shaders;
     std::unordered_map<std::string, std::unique_ptr<Framebuffer>> m_framebuffers;
     std::unordered_map<std::string, std::pair<float, float>> m_framebufferScales;
+    std::unordered_map<std::string, InternalBuffer> m_buffers;
     std::string m_currentShader;
     std::function<void(const std::string&, bool, const std::string&)> m_compilationCallback;
     GLuint m_quadVAO;

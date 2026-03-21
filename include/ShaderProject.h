@@ -33,6 +33,7 @@ struct ShaderProjectManifest {
     std::string name;
     std::string description;
     std::vector<ShaderPass> passes;
+    std::vector<ShaderBuffer> buffers;
     float timelineLength = 120.0f;  // In seconds
     float bpm = 120.0f;             // Beats per minute
     int beatsPerBar = 4;            // For timeline display

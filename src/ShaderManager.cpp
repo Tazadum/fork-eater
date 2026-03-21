@@ -62,6 +62,10 @@ ShaderManager::~ShaderManager() {
     for (auto& pair : m_shaders) {
         cleanupShader(*pair.second);
     }
+    for (auto& pair : m_buffers) {
+        glDeleteTextures(1, &pair.second.texture);
+        glDeleteBuffers(1, &pair.second.tbo);
+    }
     if (m_simpleTextureProgram.programId != 0) {
         glDeleteProgram(m_simpleTextureProgram.programId);
     }
@@ -184,19 +188,22 @@ std::shared_ptr<ShaderManager::ShaderProgram> ShaderManager::loadShader(
     }
 
     // Parse uniforms
-    std::regex uniformRegex("uniform\\s+(float|vec2|vec3|vec4)\\s+([a-zA-Z0-9_]+);");
+    // Support: uniform float|vec2|vec3|vec4 NAME[size]; or uniform samplerBuffer NAME;
+    std::regex uniformRegex(R"(uniform\s+(float|vec2|vec3|vec4|samplerBuffer)\s+([a-zA-Z0-9_]+)(?:\[(\d+)\])?\s*;)");
     std::string shaderCode = shader->preprocessedFragmentSource;
     std::smatch matches;
     auto it = shaderCode.cbegin();
     while (std::regex_search(it, shaderCode.cend(), matches, uniformRegex)) {
-        if (matches.size() == 3) {
+        if (matches.size() >= 3) {
             std::string typeStr = matches[1].str();
             std::string nameStr = matches[2].str();
+            std::string sizeStr = (matches.size() >= 4) ? matches[3].str() : "";
 
             GLenum type = GL_FLOAT;
             if (typeStr == "vec2") type = GL_FLOAT_VEC2;
             else if (typeStr == "vec3") type = GL_FLOAT_VEC3;
             else if (typeStr == "vec4") type = GL_FLOAT_VEC4;
+            else if (typeStr == "samplerBuffer") type = GL_SAMPLER_BUFFER;
 
             // Skip system uniforms
             if (nameStr == "u_time" || nameStr == "u_resolution" || nameStr == "u_mouse" || 
@@ -722,9 +729,34 @@ void ShaderManager::renderToFramebuffer(const std::string& name, int width, int 
 
     auto shader = getShader(name);
     if (shader) {
+        int textureUnitOffset = 10; // Start TBOs from unit 10 to avoid overlap with multipass inputs
         for (const auto& uniform : shader->uniforms) {
             GLint location = glGetUniformLocation(shader->programId, uniform.name.c_str());
             if (location != -1) {
+                // Check if this uniform is backed by a data buffer
+                auto bufIt = m_buffers.find(uniform.name);
+                if (bufIt != m_buffers.end()) {
+                    if (uniform.type == GL_SAMPLER_BUFFER) {
+                        glActiveTexture(GL_TEXTURE0 + textureUnitOffset);
+                        glBindTexture(GL_TEXTURE_BUFFER, bufIt->second.texture);
+                        glUniform1i(location, textureUnitOffset);
+                        textureUnitOffset++;
+                    } else {
+                        // Handle uniform array if the name matches a buffer
+                        int components = 1;
+                        if (bufIt->second.type == "vec2") components = 2;
+                        else if (bufIt->second.type == "vec3") components = 3;
+                        else if (bufIt->second.type == "vec4") components = 4;
+                        
+                        int count = static_cast<int>(bufIt->second.size / components);
+                        if (components == 1) glUniform1fv(location, count, bufIt->second.lastData.data());
+                        else if (components == 2) glUniform2fv(location, count, bufIt->second.lastData.data());
+                        else if (components == 3) glUniform3fv(location, count, bufIt->second.lastData.data());
+                        else if (components == 4) glUniform4fv(location, count, bufIt->second.lastData.data());
+                    }
+                    continue;
+                }
+
                 switch (uniform.type) {
                     case GL_FLOAT:
                         glUniform1f(location, uniform.value[0]);
@@ -922,4 +954,61 @@ void ShaderManager::performUpscale(const std::string& name, int width, int heigh
     m_framebufferScales[name] = {1.0f, 1.0f};
     
     LOG_DEBUG("Upscaled framebuffer '{}' from {}x{} to {}x{}", name, srcW, srcH, width, height);
+}
+
+void ShaderManager::updateBuffers(const std::vector<ShaderBuffer>& buffers) {
+    for (const auto& buffer : buffers) {
+        bool needsUpdate = false;
+        auto it = m_buffers.find(buffer.name);
+        if (it == m_buffers.end()) {
+            needsUpdate = true;
+        } else if (it->second.size != buffer.data.size() || it->second.type != buffer.type || it->second.lastData != buffer.data) {
+            needsUpdate = true;
+            glDeleteTextures(1, &it->second.texture);
+            glDeleteBuffers(1, &it->second.tbo);
+        }
+
+        if (needsUpdate) {
+            InternalBuffer internal;
+            internal.size = buffer.data.size();
+            internal.type = buffer.type;
+            internal.lastData = buffer.data;
+
+            glGenBuffers(1, &internal.tbo);
+            glBindBuffer(GL_TEXTURE_BUFFER, internal.tbo);
+            glBufferData(GL_TEXTURE_BUFFER, buffer.data.size() * sizeof(float), buffer.data.data(), GL_STATIC_DRAW);
+
+            glGenTextures(1, &internal.texture);
+            glBindTexture(GL_TEXTURE_BUFFER, internal.texture);
+
+            GLenum internalFormat = GL_R32F;
+            if (buffer.type == "vec2") internalFormat = GL_RG32F;
+            else if (buffer.type == "vec3") internalFormat = GL_RGB32F;
+            else if (buffer.type == "vec4") internalFormat = GL_RGBA32F;
+
+            glTexBuffer(GL_TEXTURE_BUFFER, internalFormat, internal.tbo);
+            glBindBuffer(GL_TEXTURE_BUFFER, 0);
+
+            m_buffers[buffer.name] = internal;
+            LOG_DEBUG("Updated buffer '{}' ({} values, type {})", buffer.name, buffer.data.size(), buffer.type);
+        }
+    }
+    
+    // Cleanup buffers that are no longer in the manifest
+    for (auto it = m_buffers.begin(); it != m_buffers.end(); ) {
+        bool found = false;
+        for (const auto& b : buffers) {
+            if (b.name == it->first) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            glDeleteTextures(1, &it->second.texture);
+            glDeleteBuffers(1, &it->second.tbo);
+            it = m_buffers.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
