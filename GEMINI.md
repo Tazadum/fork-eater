@@ -188,6 +188,13 @@ Shader projects are organized using a JSON manifest file called `4k-eater` (no e
   "timelineLength": 120.0,
   "bpm": 128.0,
   "beatsPerBar": 4,
+  "buffers": [
+    {
+      "name": "u_colors",
+      "type": "vec3",
+      "file": "assets/palette.csv"
+    }
+  ],
   "passes": [
     {
       "name": "main",
@@ -206,7 +213,14 @@ Shader projects are organized using a JSON manifest file called `4k-eater` (no e
 - `timelineLength`: Duration in seconds for timeline/animation
 - `bpm`: Beats per minute for music synchronization
 - `beatsPerBar`: Musical time signature (typically 4)
+- `buffers`: Array of data buffers (TBOs or Uniform Arrays)
 - `passes`: Array of shader rendering passes
+
+**Buffer Properties:**
+- `name`: The uniform name in the shader (e.g., `u_colors`)
+- `type`: The data type (`float`, `vec2`, `vec3`, `vec4`)
+- `file`: (Optional) Path to external CSV/data file relative to project root
+- `data`: (Optional) In-line array of floating-point values
 
 **Pass Properties:**
 - `name`: Unique pass identifier (used in ShaderManager)

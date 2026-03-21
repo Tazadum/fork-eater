@@ -10,3 +10,4 @@ Below is a list of documented application features. Each file provides a detaile
 *   [Render Scaling](./features/render-scaling.md)
 *   [Library Export](./features/library-export.md)
 *   [Shader Pragmas and Parameters](./features/shader-pragmas.md)
+*   [Data Buffer Support](./features/data-buffers.md)
