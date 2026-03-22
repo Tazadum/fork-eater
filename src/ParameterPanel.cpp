@@ -126,9 +126,9 @@ void ParameterPanel::render(const std::string& shaderName) {
             }
 
             std::string label = sl.label.empty() ? sl.name : sl.label;
-            int value = m_shaderManager->getSliderState(sl.name);
+            float value = m_shaderManager->getSliderState(sl.name);
             
-            if (ImGui::SliderInt(label.c_str(), &value, sl.min, sl.max)) {
+            if (ImGui::SliderFloat(label.c_str(), &value, sl.min, sl.max)) {
                 m_shaderManager->setSliderState(sl.name, value);
                 RenderScaleMode scaleMode = Settings::getInstance().getRenderScaleMode();
                 if (m_shaderManager->reloadShader(shaderName, scaleMode)) {

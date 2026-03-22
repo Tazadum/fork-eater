@@ -90,6 +90,7 @@ private:
     int m_screenWidth;
     int m_screenHeight;
     float m_renderScaleFactor; // Current render scale factor (1.0, 0.5, 0.25)
+    float m_cameraTarget[3] = {0.0f, 0.5f, 0.0f}; // Default target position
     std::unordered_map<std::string, std::pair<int, int>> m_passOutputSizes;
     std::deque<float> m_fpsHistory;
     int m_framesAboveHighThreshold;

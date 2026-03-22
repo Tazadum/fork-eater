@@ -1,0 +1,16 @@
+{
+  "name": "Raymarching Basic",
+  "description": "Simple raymarching using raymarching.glsl (float map).",
+  "version": "1.0",
+  "timelineLength": 60.0,
+  "bpm": 120.0,
+  "beatsPerBar": 4,
+  "passes": [
+    {
+      "name": "raymarching",
+      "vertexShader": "raymarching.vert",
+      "fragmentShader": "raymarching.frag",
+      "enabled": true
+    }
+  ]
+}

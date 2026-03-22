@@ -1,0 +1,16 @@
+{
+  "name": "Raymarching with Materials (vec2)",
+  "description": "Raymarching using raymarching_vec2.glsl (distance and material ID).",
+  "version": "1.0",
+  "timelineLength": 60.0,
+  "bpm": 120.0,
+  "beatsPerBar": 4,
+  "passes": [
+    {
+      "name": "raymarching",
+      "vertexShader": "raymarching.vert",
+      "fragmentShader": "raymarching.frag",
+      "enabled": true
+    }
+  ]
+}

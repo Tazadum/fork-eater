@@ -1,4 +1,16 @@
 {
   "name": "Mouse Input",
-  "description": "Demonstrates mouse input with iMouse uniform"
+  "description": "Demonstrates mouse input with iMouse uniform",
+  "version": "1.0",
+  "timelineLength": 120.0,
+  "bpm": 120.0,
+  "beatsPerBar": 4,
+  "passes": [
+    {
+      "name": "main",
+      "vertexShader": "mouse.vert",
+      "fragmentShader": "mouse.frag",
+      "enabled": true
+    }
+  ]
 }

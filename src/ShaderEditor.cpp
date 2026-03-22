@@ -62,6 +62,100 @@ void ShaderEditor::render() {
     // Process any pending shader reloads on the main thread
     processPendingReloads();
     processProjectReload();
+
+    // Handle camera movement
+    if (m_currentProject) {
+        float deltaTime = ImGui::GetIO().DeltaTime;
+        
+        float speedMultiplier = 1.0f;
+        if (ImGui::GetIO().KeyShift) speedMultiplier = 3.0f;
+        else if (ImGui::GetIO().KeyCtrl) speedMultiplier = 0.1f;
+        
+        const float moveSpeed = 2.0f * speedMultiplier;
+        
+        bool isOrbital = m_shaderManager->getSwitchState("USE_ORBITAL_CAMERA");
+        const float* camPos = m_shaderManager->getCameraPosition();
+        const float* mouseRel = m_shaderManager->getIntegratedMouse();
+        
+        float x = camPos[0], y = camPos[1], z = camPos[2];
+        float tx = m_cameraTarget[0], ty = m_cameraTarget[1], tz = m_cameraTarget[2];
+        
+        // Calculate view direction based on library camera logic
+        // For simple flying, we use the direction from cam to target + mouse offsets
+        float dx = tx - x, dy = ty - y, dz = tz - z;
+        float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+        if (dist < 0.001f) { dx = 0; dy = 0; dz = -1; dist = 1.0f; }
+        
+        float fwdX = dx / dist, fwdY = dy / dist, fwdZ = dz / dist;
+        
+        if (isOrbital) {
+            // WS changes orbital radius
+            if (ImGui::IsKeyDown(ImGuiKey_W)) { dist = std::max(0.1f, dist - moveSpeed * deltaTime); }
+            if (ImGui::IsKeyDown(ImGuiKey_S)) { dist += moveSpeed * deltaTime; }
+            
+            // Re-calculate cam position based on target and current angles + mouse
+            // Wait, orbitalCamera4k already uses mouse to update ro. 
+            // We just need to update the base radius.
+            // But we don't have the base radius stored. 
+            // Let's just move the camera relative to target.
+            x = tx - fwdX * dist;
+            y = ty - fwdY * dist;
+            z = tz - fwdZ * dist;
+        } else {
+            // Free look / Flying
+            // Base angles from target direction
+            float baseTheta = std::atan2(fwdX, fwdZ);
+            float basePhi = std::asin(std::clamp(fwdY, -1.0f, 1.0f));
+            
+            // Total angles including mouse (matching camera.glsl)
+            float finalTheta = baseTheta + (-mouseRel[0] * 3.14f);
+            float finalPhi = std::clamp(basePhi + (-mouseRel[1] * 3.14f), -1.57f, 1.57f);
+            
+            // True forward vector for movement
+            float moveFwdX = std::cos(finalPhi) * std::sin(finalTheta);
+            float moveFwdY = std::sin(finalPhi);
+            float moveFwdZ = std::cos(finalPhi) * std::cos(finalTheta);
+            
+            // Right vector (cross product with world UP)
+            float rightX = moveFwdZ; // simplified cross(0,1,0)
+            float rightZ = -moveFwdX;
+            float rLen = std::sqrt(rightX*rightX + rightZ*rightZ);
+            if (rLen > 0.001f) { rightX /= rLen; rightZ /= rLen; }
+            
+            float moveX = 0, moveY = 0, moveZ = 0;
+            if (ImGui::IsKeyDown(ImGuiKey_W)) { moveX += moveFwdX; moveY += moveFwdY; moveZ += moveFwdZ; }
+            if (ImGui::IsKeyDown(ImGuiKey_S)) { moveX -= moveFwdX; moveY -= moveFwdY; moveZ -= moveFwdZ; }
+            if (ImGui::IsKeyDown(ImGuiKey_D)) { moveX += rightX; moveZ += rightZ; }
+            if (ImGui::IsKeyDown(ImGuiKey_A)) { moveX -= rightX; moveZ -= rightZ; }
+            
+            float moveLen = std::sqrt(moveX*moveX + moveY*moveY + moveZ*moveZ);
+            if (moveLen > 0.001f) {
+                float step = moveSpeed * deltaTime;
+                x += (moveX / moveLen) * step;
+                y += (moveY / moveLen) * step;
+                z += (moveZ / moveLen) * step;
+                
+                // Move target with camera in free look
+                tx += (moveX / moveLen) * step;
+                ty += (moveY / moveLen) * step;
+                tz += (moveZ / moveLen) * step;
+            }
+        }
+        
+        // Update shader manager
+        if (x != camPos[0] || y != camPos[1] || z != camPos[2]) {
+            m_shaderManager->setCameraPosition(x, y, z);
+            m_cameraTarget[0] = tx; m_cameraTarget[1] = ty; m_cameraTarget[2] = tz;
+            
+            // Save local state
+            if (m_currentProject && m_currentProject->isLoaded()) {
+                LocalProjectState localState;
+                localState.renderScale = m_renderScaleFactor;
+                localState.camPos[0] = x; localState.camPos[1] = y; localState.camPos[2] = z;
+                m_currentProject->saveLocalState(localState);
+            }
+        }
+    }
     
     // Render all passes to their framebuffers
     if (m_currentProject) {
@@ -495,7 +589,9 @@ bool ShaderEditor::loadProjectFromPath(const std::string& projectPath) {
             LocalProjectState localState;
             if (m_currentProject->loadLocalState(localState)) {
                 m_renderScaleFactor = localState.renderScale;
-                LOG_INFO("Loaded local project state (render scale: {})", m_renderScaleFactor);
+                m_shaderManager->setCameraPosition(localState.camPos[0], localState.camPos[1], localState.camPos[2]);
+                LOG_INFO("Loaded local project state (render scale: {}, cam: {} {} {})", 
+                         m_renderScaleFactor, localState.camPos[0], localState.camPos[1], localState.camPos[2]);
             }
 
             // Auto-select the first enabled pass for immediate rendering

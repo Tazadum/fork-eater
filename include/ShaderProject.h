@@ -16,6 +16,7 @@ class ShaderManager;
 
 struct LocalProjectState {
     float renderScale = 1.0f;
+    float camPos[3] = {0.0f, 0.5f, 2.0f}; // Default camera position
 };
 
 struct ShaderPass {

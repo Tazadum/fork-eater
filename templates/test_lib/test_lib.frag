@@ -1,16 +1,26 @@
 #version 330 core
 
+#pragma group("Shapes")
+#pragma slider(RADIUS, 0.1, 0.5, 0.25, "Circle Radius")
+#pragma endgroup()
+
+#pragma include("utils.glsl")
+
 out vec4 FragColor;
 
 in vec2 TexCoord;
 
-uniform vec3  iResolution;
 uniform float iTime;
-
-#pragma include("<utils.glsl>")
+uniform vec3 iResolution;
 
 void main() {
-    vec2 uv = gl_FragCoord.xy / iResolution.xy;
-    float c = circle(uv, 0.5);
-    FragColor = vec4(c, c, c, 1.0);
+    vec2 uv = TexCoord;
+    
+    // Use circle function from utils.glsl
+    float c = circle(uv, RADIUS);
+    
+    vec3 col = vec3(c);
+    col *= 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));
+    
+    FragColor = vec4(col, 1.0);
 }

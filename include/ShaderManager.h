@@ -97,6 +97,11 @@ public:
     void setMousePosition(float x, float y);
     void setMouseClickState(bool clicked);
     void updateIntegratedMouse(float dx, float dy);
+    const float* getIntegratedMouse() const { return m_mouseIntegrated; }
+    
+    // Camera helpers
+    void setCameraPosition(float x, float y, float z);
+    const float* getCameraPosition() const { return m_camPos; }
     
     // Get all shader names
     std::vector<std::string> getShaderNames() const;
@@ -119,9 +124,9 @@ public:
     const std::unordered_map<std::string, bool>& getSwitchStates() const;
 
     // Slider state management (compile-time sliders)
-    int getSliderState(const std::string& name) const;
-    void setSliderState(const std::string& name, int value);
-    const std::unordered_map<std::string, int>& getSliderStates() const;
+    float getSliderState(const std::string& name) const;
+    void setSliderState(const std::string& name, float value);
+    const std::unordered_map<std::string, float>& getSliderStates() const;
 
 private:
     struct InternalBuffer {
@@ -142,9 +147,10 @@ private:
     GLuint m_quadVBO;
     std::unordered_map<std::string, bool> m_errorLogged;
     std::unordered_map<std::string, bool> m_switchStates;
-    std::unordered_map<std::string, int> m_sliderStates;
+    std::unordered_map<std::string, float> m_sliderStates;
     float m_mouseUniform[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     float m_mouseIntegrated[2] = {0.0f, 0.0f}; // Start at center
+    float m_camPos[3] = {0.0f, 0.5f, 2.0f}; // Default camera position
     
     // Helper functions
     GLuint compileShader(const std::string& source, GLenum shaderType, std::string& outErrorLog, const std::vector<ShaderPreprocessor::LineMapping>* lineMappings = nullptr);

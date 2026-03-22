@@ -106,6 +106,9 @@ bool ShaderProject::createNew(const std::string& projectPath, const std::string&
     if (!createShadersFromTemplate(*shaderTemplate)) {
         return false;
     }
+
+    // Export bundled libraries to the project's libs folder
+    exportLibraries();
     
     m_isLoaded = true;
     return true;
@@ -588,6 +591,13 @@ bool ShaderProject::loadLocalState(LocalProjectState& state) const {
                 } catch (...) {
                     LOG_WARN("Failed to parse render_scale from local state: {}", value);
                 }
+            } else if (key == "cam_pos") {
+                try {
+                    std::stringstream ss(value);
+                    ss >> state.camPos[0] >> state.camPos[1] >> state.camPos[2];
+                } catch (...) {
+                    LOG_WARN("Failed to parse cam_pos from local state: {}", value);
+                }
             }
         }
     }
@@ -604,6 +614,7 @@ bool ShaderProject::saveLocalState(const LocalProjectState& state) const {
 
     file << "# Fork Eater Local Project Properties\n";
     file << "render_scale=" << state.renderScale << "\n";
+    file << "cam_pos=" << state.camPos[0] << " " << state.camPos[1] << " " << state.camPos[2] << "\n";
     return true;
 }
 

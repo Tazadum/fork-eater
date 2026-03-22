@@ -401,7 +401,7 @@ void ShaderManager::updateIntegratedMouse(float dx, float dy) {
     // In -1..1 range (width 2), moving full width should add 2.0.
     m_mouseIntegrated[0] += dx * 2.0f;
     m_mouseIntegrated[1] += dy * 2.0f;
-    
+
     // Wrap around logic for -1..1 range
     for (int i = 0; i < 2; ++i) {
         float val = (m_mouseIntegrated[i] + 1.0f) * 0.5f;
@@ -410,8 +410,13 @@ void ShaderManager::updateIntegratedMouse(float dx, float dy) {
     }
 }
 
-std::vector<std::string> ShaderManager::getShaderNames() const {
-    std::vector<std::string> names;
+void ShaderManager::setCameraPosition(float x, float y, float z) {
+    m_camPos[0] = x;
+    m_camPos[1] = y;
+    m_camPos[2] = z;
+}
+
+std::vector<std::string> ShaderManager::getShaderNames() const {    std::vector<std::string> names;
     for (const auto& pair : m_shaders) {
         names.push_back(pair.first);
     }
@@ -450,19 +455,19 @@ const std::unordered_map<std::string, bool>& ShaderManager::getSwitchStates() co
     return m_switchStates;
 }
 
-int ShaderManager::getSliderState(const std::string& name) const {
+float ShaderManager::getSliderState(const std::string& name) const {
     auto it = m_sliderStates.find(name);
     if (it != m_sliderStates.end()) {
         return it->second;
     }
-    return 0;
+    return 0.0f;
 }
 
-void ShaderManager::setSliderState(const std::string& name, int value) {
+void ShaderManager::setSliderState(const std::string& name, float value) {
     m_sliderStates[name] = value;
 }
 
-const std::unordered_map<std::string, int>& ShaderManager::getSliderStates() const {
+const std::unordered_map<std::string, float>& ShaderManager::getSliderStates() const {
     return m_sliderStates;
 }
 
@@ -471,7 +476,7 @@ GLuint ShaderManager::compileShader(const std::string& source, GLenum shaderType
     std::string finalSource = source;
     const char* stageName = (shaderType == GL_VERTEX_SHADER) ? "Vertex" :
                             (shaderType == GL_FRAGMENT_SHADER) ? "Fragment" : "Unknown";
-    
+
     // Inject switch #defines
     for (const auto& [name, enabled] : m_switchStates) {
         if (enabled) {
@@ -492,12 +497,12 @@ GLuint ShaderManager::compileShader(const std::string& source, GLenum shaderType
             size_t eolPos = finalSource.find('\n', versionPos);
             if (eolPos != std::string::npos) {
                 std::stringstream ss;
+                ss << std::fixed << std::setprecision(4);
                 ss << "#define " << name << " " << value << "\n";
                 finalSource.insert(eolPos + 1, ss.str());
             }
         }
     }
-
     GLuint shader = glCreateShader(shaderType);
     
     const char* sourcePtr = finalSource.c_str();
@@ -814,6 +819,7 @@ void ShaderManager::renderToFramebuffer(const std::string& name, int width, int 
     setMouseUniform("u_mouse", u_mouse);
     setUniform("u_mouse_rel", m_mouseIntegrated, 2);
     setUniform("u_fork_cam_mouse", m_mouseIntegrated, 2);
+    setUniform("u_fork_cam_pos", m_camPos, 3);
 
     glBindVertexArray(m_quadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);

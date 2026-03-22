@@ -196,7 +196,7 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
     // #pragma switch(NAME [, defaultValue] [, "offLabel" [, "onLabel"]])
     std::regex switchRegex(R"x(#pragma\s+switch\s*\(\s*([a-zA-Z0-9_]+)\s*(?:,\s*(true|false|on|off|0|1))?\s*(?:,\s*["']([^"']+)["'])?\s*(?:,\s*["']([^"']+)["'])?\s*\))x");
     // #pragma slider(NAME, min, max [, defaultValue [, "Label"]])
-    std::regex sliderRegex(R"x(#pragma\s+slider\s*\(\s*([a-zA-Z0-9_]+)\s*,\s*([-+]?[0-9]+)\s*,\s*([-+]?[0-9]+)\s*(?:,\s*([-+]?[0-9]+))?\s*(?:,\s*["']([^"']+)["'])?\s*\))x");
+    std::regex sliderRegex(R"x(#pragma\s+slider\s*\(\s*([a-zA-Z0-9_]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)\s*(?:,\s*([-+]?[0-9]*\.?[0-9]+))?\s*(?:,\s*["']([^"']+)["'])?\s*\))x");
     // #pragma range(NAME, min, max [, defaultValue [, "Label"]])
     std::regex rangeRegex(R"x(#pragma\s+range\s*\(\s*([a-zA-Z0-9_]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)\s*(?:,\s*([-+]?[0-9]*\.?[0-9]+))?\s*(?:,\s*["']([^"']+)["'])?\s*\))x");
     // #pragma range(min, max [, defaultValue [, "Label"]])
@@ -260,11 +260,11 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
             if (match.size() >= 4) {
                 SliderInfo sl;
                 sl.name = match[1].str();
-                sl.min = std::stoi(match[2].str());
-                sl.max = std::stoi(match[3].str());
-                
+                sl.min = std::stof(match[2].str());
+                sl.max = std::stof(match[3].str());
+
                 if (match.size() >= 5 && !match[4].str().empty()) {
-                    sl.defaultValue = std::stoi(match[4].str());
+                    sl.defaultValue = std::stof(match[4].str());
                     sl.hasDefaultValue = true;
                 }
 
@@ -275,7 +275,6 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
                 sliders.push_back(sl);
             }
         }
-
         // Scan for named ranges
         auto rangeBegin = std::sregex_iterator(line.begin(), line.end(), rangeRegex);
         for (std::sregex_iterator i = rangeBegin; i != switchEnd; ++i) {
@@ -394,6 +393,23 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
                     // Filesystem include
                     std::filesystem::path currentDirPath = std::filesystem::path(filePath).parent_path();
                     std::string includePath = (currentDirPath / includeFileName).string();
+                    
+                    // If not found in current dir, try libs/ relative to current dir
+                    if (!std::filesystem::exists(includePath)) {
+                        std::string libsRelativePath = (currentDirPath / "libs" / includeFileName).string();
+                        if (std::filesystem::exists(libsRelativePath)) {
+                            includePath = libsRelativePath;
+                        } else {
+                            // Try libs/ relative to project root (assume shaders is a sibling of libs)
+                            if (currentDirPath.filename() == "shaders") {
+                                std::string rootLibsPath = (currentDirPath.parent_path() / "libs" / includeFileName).string();
+                                if (std::filesystem::exists(rootLibsPath)) {
+                                    includePath = rootLibsPath;
+                                }
+                            }
+                        }
+                    }
+
                     includedContent = preprocessRecursive(includePath, includeStack, uniqueIncludedFiles, switchFlags, sliders, uniformRanges, labels, lineMappings, groupChanges, currentGroup, currentLine);
                 }
                 preprocessedSource << includedContent;

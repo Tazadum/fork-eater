@@ -1,4 +1,4 @@
-#pragma group("Raymarching vec3")
+#pragma group("Raymarching")
 #pragma slider(RAYMARCH_STEPS, 25, 200, 100, "Steps")
 #pragma slider(RAYMARCH_MAX_DISTANCE, 5, 1000, 100, "Max Dist")
 #pragma switch(RAYMARCH_RELAXED, false, "Normal tracing", "Relaxed tracing")
@@ -24,42 +24,37 @@ vec3 eps = vec3(0.01, 0.0, 0.0);
 #define RAYMARCH_STEP_SCALE   1.0
 #endif
 
-vec4 map(vec3 p);
+float map(vec3 p);
 
 // Return the normalized normal vector at point p by sampling the distance field at p and nearby points.
 vec3 normal(vec3 p) {
-	float d = map(p).x;
+	float d = map(p);
 	return normalize(vec3(
-		d - map(p-EPS.xyz).x,
-		d - map(p-EPS.yxz).x,
-		d - map(p-EPS.yzx).x
+		d - map(p-EPS.xyz),
+		d - map(p-EPS.yxz),
+		d - map(p-EPS.yzx)
 	));
 }
 
-// Marches along a ray and returns a vec4 where:
-// x = distance to closest surface
-// y = closeness to the surface (negative if inside)
-// z = material id (-1.0 for none)
-// w = emissive (0.0 for none)
-vec4 intersect(vec3 ro, vec3 rd) {
+// Marches along a ray and returns a vec2 where:
+// x = total distance traveled (t)
+// y = closeness to the surface (distance at hit)
+vec2 intersect(vec3 ro, vec3 rd) {
 	// .x = t
     // .y = dt
-	// .z = material
-	// .w = min(t) emissive
-	vec4 hit = vec4(0.1, 0.1, 0., 0.);
+	vec2 hit = vec2(0.1, 0.1);
 
 #ifdef RAYMARCH_RELAXED
 #ifdef RAYMARCH_INTERNAL
-	float prev = 0.0, sgn = map(ro).x<0.0 ? -1.0 : 1.0;
+	float prev = 0.0, sgn = map(ro)<0.0 ? -1.0 : 1.0;
 	for (int i=0; i<RAYMARCH_STEPS; i++ ) { 		
 		if (abs(hit.y) > RAYMARCH_MIN_DISTANCE) {
-            hit.yzw = map(ro + rd * hit.x);
+            hit.y = map(ro + rd * hit.x);
 			float L_est = 1.0 / max(1.0, abs( sgn * hit.y - prev) / (hit.x - prev));
 			prev = sgn * hit.y * L_est;
 	        hit.x += sgn * hit.y * L_est;
 		}
 		if (hit.x > RAYMARCH_MAX_DISTANCE) {
-			hit.z = -1;
 			break;
 		}
 	}
@@ -67,13 +62,12 @@ vec4 intersect(vec3 ro, vec3 rd) {
 	float prev = 0.0;
 	for (int i=0; i<RAYMARCH_STEPS; i++ ) { 		
 		if (abs(hit.y) > RAYMARCH_MIN_DISTANCE) {
-            hit.yzw = map(ro + rd * hit.x);
+            hit.y = map(ro + rd * hit.x);
 			float L_est = 1.0 / max(1.0, abs( hit.y - prev) / (hit.x - prev));
 			prev = hit.y * L_est;
 	        hit.x += hit.y * L_est;
 		}
 		if (hit.x > RAYMARCH_MAX_DISTANCE) {
-			hit.z = -1;
 			break;
 		}
 	}
@@ -81,25 +75,23 @@ vec4 intersect(vec3 ro, vec3 rd) {
 #else
 
 #ifdef RAYMARCH_INTERNAL
-	float sgn = map(ro).x<0.0 ? -1.0 : 1.0;
+	float sgn = map(ro)<0.0 ? -1.0 : 1.0;
 	for (int i=0; i<RAYMARCH_STEPS; i++ ) { 		
 	if (abs(hit.y) > RAYMARCH_MIN_DISTANCE) {
-		hit.yzw = map(ro + rd * hit.x);
+		hit.y = map(ro + rd * hit.x);
 		hit.x += hit.y * sgn * RAYMARCH_STEP_SCALE;
 	}
 	if (hit.x > RAYMARCH_MAX_DISTANCE) {
-		hit.z = -1;
 		break;
 	}
 }
 #else
 	for (int i=0; i<RAYMARCH_STEPS; i++ ) { 		
 		if (abs(hit.y) > RAYMARCH_MIN_DISTANCE) {
-			hit.yzw = map(ro + rd * hit.x);
+			hit.y = map(ro + rd * hit.x);
 			hit.x += hit.y * RAYMARCH_STEP_SCALE;
 		}
 		if (hit.x > RAYMARCH_MAX_DISTANCE) {
-			hit.z = -1;
 			break;
 		}
 	}
@@ -115,7 +107,7 @@ float softshadow( in vec3 ro, in vec3 rd, float mint, float maxt, float k )
     float t = mint;
     for( int i=0; i<RAYMARCH_SOFT_SHADE_STEPS && t<maxt; i++ )
     {
-        h = map(ro + rd*t).x;
+        h = map(ro + rd*t);
         if( h<mint )
             return 0.0;
         res = min( res, k*h/t );
@@ -130,7 +122,7 @@ float softshadow(vec3 ro, vec3 rd, float mint, float maxt, float w )
     float t = mint;
     for( int i=0; i<RAYMARCH_SOFT_SHADE_STEPS && t<maxt; i++ )
     {
-        float h = map(ro + t*rd).x;
+        float h = map(ro + t*rd);
         res = min( res, h/(w*t) );
         t += clamp(h, 0.005, 0.50);
         if( res<-1.0 || t>maxt ) break;
