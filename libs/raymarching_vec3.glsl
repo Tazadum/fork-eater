@@ -24,7 +24,7 @@ vec3 eps = vec3(0.01, 0.0, 0.0);
 #define RAYMARCH_STEP_SCALE   1.0
 #endif
 
-vec4 map(vec3 p);
+vec3 map(vec3 p);
 
 // Return the normalized normal vector at point p by sampling the distance field at p and nearby points.
 vec3 normal(vec3 p) {
