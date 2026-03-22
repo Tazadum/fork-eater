@@ -598,6 +598,13 @@ bool ShaderProject::loadLocalState(LocalProjectState& state) const {
                 } catch (...) {
                     LOG_WARN("Failed to parse cam_pos from local state: {}", value);
                 }
+            } else if (key == "cam_target") {
+                try {
+                    std::stringstream ss(value);
+                    ss >> state.camTarget[0] >> state.camTarget[1] >> state.camTarget[2];
+                } catch (...) {
+                    LOG_WARN("Failed to parse cam_target from local state: {}", value);
+                }
             }
         }
     }
@@ -615,6 +622,7 @@ bool ShaderProject::saveLocalState(const LocalProjectState& state) const {
     file << "# Fork Eater Local Project Properties\n";
     file << "render_scale=" << state.renderScale << "\n";
     file << "cam_pos=" << state.camPos[0] << " " << state.camPos[1] << " " << state.camPos[2] << "\n";
+    file << "cam_target=" << state.camTarget[0] << " " << state.camTarget[1] << " " << state.camTarget[2] << "\n";
     return true;
 }
 

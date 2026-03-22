@@ -102,6 +102,8 @@ public:
     // Camera helpers
     void setCameraPosition(float x, float y, float z);
     const float* getCameraPosition() const { return m_camPos; }
+    void setCameraTarget(float x, float y, float z);
+    const float* getCameraTarget() const { return m_camTarget; }
     
     // Get all shader names
     std::vector<std::string> getShaderNames() const;
@@ -151,6 +153,7 @@ private:
     float m_mouseUniform[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     float m_mouseIntegrated[2] = {0.0f, 0.0f}; // Start at center
     float m_camPos[3] = {0.0f, 0.5f, 2.0f}; // Default camera position
+    float m_camTarget[3] = {0.0f, 0.0f, 0.0f}; // Default camera target
     
     // Helper functions
     GLuint compileShader(const std::string& source, GLenum shaderType, std::string& outErrorLog, const std::vector<ShaderPreprocessor::LineMapping>* lineMappings = nullptr);

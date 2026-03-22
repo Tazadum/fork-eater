@@ -30,11 +30,8 @@ void main() {
     vec3 target = vec3(0.0, 0.5, 0.0);
     vec3 rd;
 
-    #ifdef USE_CAMERA
-        editorCamera(ro, target, uv, rd);
-    #else
-        demoCamera(ro, target, uv, rd);
-    #endif
+    editorCamera(ro, target, uv, rd);
+    demoCamera(ro, target, uv, rd);
 
     vec3 hit = intersect(ro, rd);
     float t = hit.x;

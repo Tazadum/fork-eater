@@ -416,6 +416,12 @@ void ShaderManager::setCameraPosition(float x, float y, float z) {
     m_camPos[2] = z;
 }
 
+void ShaderManager::setCameraTarget(float x, float y, float z) {
+    m_camTarget[0] = x;
+    m_camTarget[1] = y;
+    m_camTarget[2] = z;
+}
+
 std::vector<std::string> ShaderManager::getShaderNames() const {    std::vector<std::string> names;
     for (const auto& pair : m_shaders) {
         names.push_back(pair.first);
@@ -820,6 +826,7 @@ void ShaderManager::renderToFramebuffer(const std::string& name, int width, int 
     setUniform("u_mouse_rel", m_mouseIntegrated, 2);
     setUniform("u_fork_cam_mouse", m_mouseIntegrated, 2);
     setUniform("u_fork_cam_pos", m_camPos, 3);
+    setUniform("u_fork_cam_target", m_camTarget, 3);
 
     glBindVertexArray(m_quadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);

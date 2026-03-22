@@ -42,11 +42,8 @@ void main() {
     vec3 rd;
 
     // Use library camera (supports both editor orbital and demo fixed camera)
-    #ifdef USE_CAMERA
-        editorCamera(ro, target, uv, rd);
-    #else
-        demoCamera(ro, target, uv, rd);
-    #endif
+    editorCamera(ro, target, uv, rd);
+    demoCamera(ro, target, uv, rd);
 
     // Use library raymarching
     vec4 hit = intersect(ro, rd);

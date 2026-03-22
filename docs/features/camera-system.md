@@ -21,21 +21,19 @@ To use the camera system in your fragment shader, include the `camera.glsl` libr
 #pragma include("camera.glsl")
 
 uniform vec3 u_fork_cam_pos;
+uniform vec3 u_fork_cam_target;
 uniform vec2 u_fork_cam_mouse;
 
 void main() {
     vec2 uv = (2.0 * gl_FragCoord.xy - iResolution.xy) / iResolution.y;
     
     vec3 ro = u_fork_cam_pos; // Managed by C++ and moved with WASD
-    vec3 target = vec3(0.0, 0.5, 0.0);
+    vec3 target = u_fork_cam_target; // Managed by C++ and moved with WASD
     vec3 rd;
     
     // Automatic editor/demo camera switching
-    #ifdef USE_CAMERA
-        editorCamera(ro, target, uv, rd);
-    #else
-        demoCamera(ro, target, uv, rd);
-    #endif
+    editorCamera(ro, target, uv, rd);
+    demoCamera(ro, target, uv, rd);
     
     // ... use ro and rd for raymarching ...
 }
@@ -58,14 +56,16 @@ When `USE_ORBITAL_CAMERA` is enabled:
 
 - **Focal Length**: Calculated as `1.0 / tan(fov_angle / 2)`.
 - **Position Uniform**: `u_fork_cam_pos` (vec3) provides the world-space camera origin.
+- **Target Uniform**: `u_fork_cam_target` (vec3) provides the world-space camera target (focus point).
 - **Mouse Uniform**: `u_fork_cam_mouse` (vec2) provides the integrated relative mouse movement.
-- **Local Persistence**: The `.4k-eater.local` file stores the last known camera position for each project:
+- **Local Persistence**: The `.4k-eater.local` file stores the last known camera position and target for each project:
   ```properties
   cam_pos=1.24 0.50 3.82
+  cam_target=0.00 0.50 0.00
   ```
 
 ## Library Functions (camera.glsl)
 
-- `editorCamera(inout vec3 ro, vec3 ta, vec2 uv, out vec3 rd)`: The primary entry point for camera setup.
+- `editorCamera(inout vec3 ro, inout vec3 ta, vec2 uv, inout vec3 rd)`: The primary entry point for camera setup.
 - `getFocalLength()`: Returns the perspective zoom factor based on the current FOV.
 - `orbitalCamera4k(...)` & `freeLookCamera4k(...)`: Internal implementations of the camera modes.

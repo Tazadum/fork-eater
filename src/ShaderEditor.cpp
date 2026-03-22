@@ -80,71 +80,91 @@ void ShaderEditor::render() {
         float x = camPos[0], y = camPos[1], z = camPos[2];
         float tx = m_cameraTarget[0], ty = m_cameraTarget[1], tz = m_cameraTarget[2];
         
-        // Calculate view direction based on library camera logic
-        // For simple flying, we use the direction from cam to target + mouse offsets
+        // Calculate logical forward
         float dx = tx - x, dy = ty - y, dz = tz - z;
         float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
         if (dist < 0.001f) { dx = 0; dy = 0; dz = -1; dist = 1.0f; }
         
         float fwdX = dx / dist, fwdY = dy / dist, fwdZ = dz / dist;
         
+        // Base angles for logical forward
+        float baseTheta = std::atan2(fwdX, fwdZ);
+        float basePhi = std::asin(std::clamp(fwdY, -1.0f, 1.0f));
+        
+        // Total angles including mouse (matching fixed camera.glsl)
+        // We use - for inverted horizontal rotation
+        const float sensitivity = 3.14f;
+        float visualTheta = baseTheta - (mouseRel[0] * sensitivity);
+        float visualPhi = std::clamp(basePhi + (mouseRel[1] * sensitivity), -1.57f, 1.57f);
+        
         if (isOrbital) {
-            // WS changes orbital radius
+            // In orbital mode, mouse rotates around target.
+            // We need to re-derive visual position for movement calculation.
+            // Matching GLSL orbitalCamera4k:
+            float orbPhi = std::acos(std::clamp(fwdY, -1.0f, 1.0f));
+            float orbTheta = std::atan2(fwdX, fwdZ);
+            
+            float finalOrbPhi = std::clamp(orbPhi + (mouseRel[1] * sensitivity), 0.01f, 3.1415f);
+            float finalOrbTheta = orbTheta + (mouseRel[0] * sensitivity);
+            
+            // Current visual forward (from cam to target)
+            float vFwdX = std::sin(finalOrbPhi) * std::sin(finalOrbTheta);
+            float vFwdY = std::cos(finalOrbPhi);
+            float vFwdZ = std::sin(finalOrbPhi) * std::cos(finalOrbTheta);
+            // vFwd is vector from target to camera, so actually -forward.
+            
             if (ImGui::IsKeyDown(ImGuiKey_W)) { dist = std::max(0.1f, dist - moveSpeed * deltaTime); }
             if (ImGui::IsKeyDown(ImGuiKey_S)) { dist += moveSpeed * deltaTime; }
             
-            // Re-calculate cam position based on target and current angles + mouse
-            // Wait, orbitalCamera4k already uses mouse to update ro. 
-            // We just need to update the base radius.
-            // But we don't have the base radius stored. 
-            // Let's just move the camera relative to target.
+            // Update logical position based on new dist, but keeping it unrotated
+            // because GLSL will apply the rotation.
             x = tx - fwdX * dist;
             y = ty - fwdY * dist;
             z = tz - fwdZ * dist;
         } else {
             // Free look / Flying
-            // Base angles from target direction
-            float baseTheta = std::atan2(fwdX, fwdZ);
-            float basePhi = std::asin(std::clamp(fwdY, -1.0f, 1.0f));
+            // True forward vector for movement (matching freeLookCamera4k)
+            float moveFwdX = std::cos(visualPhi) * std::sin(visualTheta);
+            float moveFwdY = std::sin(visualPhi);
+            float moveFwdZ = std::cos(visualPhi) * std::cos(visualTheta);
             
-            // Total angles including mouse (matching camera.glsl)
-            float finalTheta = baseTheta + (-mouseRel[0] * 3.14f);
-            float finalPhi = std::clamp(basePhi + (-mouseRel[1] * 3.14f), -1.57f, 1.57f);
-            
-            // True forward vector for movement
-            float moveFwdX = std::cos(finalPhi) * std::sin(finalTheta);
-            float moveFwdY = std::sin(finalPhi);
-            float moveFwdZ = std::cos(finalPhi) * std::cos(finalTheta);
-            
-            // Right vector (cross product with world UP)
-            float rightX = moveFwdZ; // simplified cross(0,1,0)
-            float rightZ = -moveFwdX;
-            float rLen = std::sqrt(rightX*rightX + rightZ*rightZ);
-            if (rLen > 0.001f) { rightX /= rLen; rightZ /= rLen; }
+            // Right vector for strafing (always horizontal, perpendicular to visual horizontal angle)
+            // Derived from cross((sin(visualTheta), 0, cos(visualTheta)), (0, 1, 0))
+            // x = 0*0 - cos*1 = -cos
+            // z = sin*1 - 0*0 = sin
+            float rightX = -std::cos(visualTheta);
+            float rightY = 0.0f;
+            float rightZ = std::sin(visualTheta);
             
             float moveX = 0, moveY = 0, moveZ = 0;
             if (ImGui::IsKeyDown(ImGuiKey_W)) { moveX += moveFwdX; moveY += moveFwdY; moveZ += moveFwdZ; }
             if (ImGui::IsKeyDown(ImGuiKey_S)) { moveX -= moveFwdX; moveY -= moveFwdY; moveZ -= moveFwdZ; }
-            if (ImGui::IsKeyDown(ImGuiKey_D)) { moveX += rightX; moveZ += rightZ; }
-            if (ImGui::IsKeyDown(ImGuiKey_A)) { moveX -= rightX; moveZ -= rightZ; }
+            if (ImGui::IsKeyDown(ImGuiKey_D)) { moveX += rightX; moveY += rightY; moveZ += rightZ; }
+            if (ImGui::IsKeyDown(ImGuiKey_A)) { moveX -= rightX; moveY -= rightY; moveZ -= rightZ; }
             
             float moveLen = std::sqrt(moveX*moveX + moveY*moveY + moveZ*moveZ);
             if (moveLen > 0.001f) {
                 float step = moveSpeed * deltaTime;
-                x += (moveX / moveLen) * step;
-                y += (moveY / moveLen) * step;
-                z += (moveZ / moveLen) * step;
+                float stepX = (moveX / moveLen) * step;
+                float stepY = (moveY / moveLen) * step;
+                float stepZ = (moveZ / moveLen) * step;
                 
-                // Move target with camera in free look
-                tx += (moveX / moveLen) * step;
-                ty += (moveY / moveLen) * step;
-                tz += (moveZ / moveLen) * step;
+                x += stepX;
+                y += stepY;
+                z += stepZ;
+                
+                // Move target with camera in free look to keep anchor orientation stable
+                tx += stepX;
+                ty += stepY;
+                tz += stepZ;
             }
         }
         
         // Update shader manager
-        if (x != camPos[0] || y != camPos[1] || z != camPos[2]) {
+        if (x != camPos[0] || y != camPos[1] || z != camPos[2] || 
+            tx != m_cameraTarget[0] || ty != m_cameraTarget[1] || tz != m_cameraTarget[2]) {
             m_shaderManager->setCameraPosition(x, y, z);
+            m_shaderManager->setCameraTarget(tx, ty, tz);
             m_cameraTarget[0] = tx; m_cameraTarget[1] = ty; m_cameraTarget[2] = tz;
             
             // Save local state
@@ -152,6 +172,7 @@ void ShaderEditor::render() {
                 LocalProjectState localState;
                 localState.renderScale = m_renderScaleFactor;
                 localState.camPos[0] = x; localState.camPos[1] = y; localState.camPos[2] = z;
+                localState.camTarget[0] = tx; localState.camTarget[1] = ty; localState.camTarget[2] = tz;
                 m_currentProject->saveLocalState(localState);
             }
         }
@@ -590,10 +611,15 @@ bool ShaderEditor::loadProjectFromPath(const std::string& projectPath) {
             if (m_currentProject->loadLocalState(localState)) {
                 m_renderScaleFactor = localState.renderScale;
                 m_shaderManager->setCameraPosition(localState.camPos[0], localState.camPos[1], localState.camPos[2]);
-                LOG_INFO("Loaded local project state (render scale: {}, cam: {} {} {})", 
-                         m_renderScaleFactor, localState.camPos[0], localState.camPos[1], localState.camPos[2]);
+                m_shaderManager->setCameraTarget(localState.camTarget[0], localState.camTarget[1], localState.camTarget[2]);
+                m_cameraTarget[0] = localState.camTarget[0];
+                m_cameraTarget[1] = localState.camTarget[1];
+                m_cameraTarget[2] = localState.camTarget[2];
+                LOG_INFO("Loaded local project state (render scale: {}, cam: {} {} {}, target: {} {} {})",
+                         m_renderScaleFactor, 
+                         localState.camPos[0], localState.camPos[1], localState.camPos[2],
+                         localState.camTarget[0], localState.camTarget[1], localState.camTarget[2]);
             }
-
             // Auto-select the first enabled pass for immediate rendering
             const auto& passes = m_currentProject->getPasses();
             for (const auto& pass : passes) {
