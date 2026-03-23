@@ -667,14 +667,15 @@ bool ShaderProject::exportLibraries() const {
             LOG_DEBUG("Exported: {}", name);
         }
 
-        // Create .gitignore and READ_ONLY files in the libs folder
-        std::string gitignorePath = libsDirPath + "/" + SHADER_PROJECT_LIBS_GITIGNORE;
+        // Create .gitignore in the project root to ignore the libs folder
+        std::string gitignorePath = m_projectPath + "/" + SHADER_PROJECT_GITIGNORE;
         std::ofstream gitignoreFile(gitignorePath);
         if (gitignoreFile.is_open()) {
-            gitignoreFile << "*\n";
-            LOG_DEBUG("Created: {}", SHADER_PROJECT_LIBS_GITIGNORE);
+            gitignoreFile << "libs/\n";
+            LOG_DEBUG("Created: {}", SHADER_PROJECT_GITIGNORE);
         }
 
+        // Create READ_ONLY file in the libs folder
         std::string readOnlyPath = libsDirPath + "/" + SHADER_PROJECT_LIBS_READ_ONLY;
         std::ofstream readOnlyFile(readOnlyPath);
         if (readOnlyFile.is_open()) {
