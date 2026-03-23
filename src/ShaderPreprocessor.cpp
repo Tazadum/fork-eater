@@ -338,81 +338,78 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
                 if (!libInclude.empty()) includeFileName = libInclude;
                 else if (!quoteInclude.empty()) includeFileName = quoteInclude;
                 else includeFileName = bareInclude;
+
+                std::string resourceName = includeFileName;
+                bool isLibPrefix = false;
+                if (resourceName.rfind("libs/", 0) == 0) {
+                    resourceName = resourceName.substr(5);
+                    isLibPrefix = true;
+                } else if (resourceName.rfind("lib/", 0) == 0) {
+                    resourceName = resourceName.substr(4);
+                    isLibPrefix = true;
+                }
                 
+                bool isLibraryInclude = isLibPrefix || !libInclude.empty();
                 std::string includedContent;
-                
-                // Check if it is an embedded library
-                bool isEmbedded = !libInclude.empty();
-                if (!isEmbedded && includeFileName.rfind("lib/", 0) == 0) {
-                    isEmbedded = true;
-                }
+                bool found = false;
 
-                bool foundInEmbedded = false;
-                std::string libContent;
+                if (isLibraryInclude) {
+                    // 1. Search locally in project libs folder
+                    // We assume project structure: [root]/shaders/ and [root]/libs/
+                    std::filesystem::path currentFile(filePath);
+                    std::filesystem::path projectRoot = currentFile.parent_path();
+                    if (projectRoot.filename() == "shaders") {
+                        projectRoot = projectRoot.parent_path();
+                    }
+                    
+                    std::filesystem::path localLibPath = projectRoot / "libs" / resourceName;
+                    if (std::filesystem::exists(localLibPath)) {
+                        includedContent = preprocessRecursive(localLibPath.string(), includeStack, uniqueIncludedFiles, switchFlags, sliders, uniformRanges, labels, lineMappings, groupChanges, currentGroup, currentLine);
+                        found = true;
+                    }
 
-                if (isEmbedded) {
-                     // Try exact match
-                    auto it = EmbeddedLibraries::g_libs.find(includeFileName);
-                    if (it != EmbeddedLibraries::g_libs.end()) {
-                        libContent = std::string(it->second.first, it->second.second);
-                        foundInEmbedded = true;
-                    } else {
-                         // Try stripping "lib/" or "libs/"
-                         std::string strippedName = includeFileName;
-                         if (strippedName.rfind("lib/", 0) == 0) strippedName = strippedName.substr(4);
-                         else if (strippedName.rfind("libs/", 0) == 0) strippedName = strippedName.substr(5);
-                         
-                         it = EmbeddedLibraries::g_libs.find(strippedName);
-                         if (it != EmbeddedLibraries::g_libs.end()) {
-                            libContent = std::string(it->second.first, it->second.second);
-                            foundInEmbedded = true;
-                         }
+                    if (!found) {
+                        // 2. Search in bundled shaders (embedded)
+                        auto it = EmbeddedLibraries::g_libs.find(resourceName);
+                        if (it == EmbeddedLibraries::g_libs.end() && !libInclude.empty()) {
+                            // Also try with prefix if <lib> was used but not found stripped
+                            it = EmbeddedLibraries::g_libs.find(libInclude);
+                        }
+
+                        if (it != EmbeddedLibraries::g_libs.end()) {
+                            std::string libContent(it->second.first, it->second.second);
+                            std::string embeddedName = "embedded:" + resourceName;
+                            if (std::find(includeStack.begin(), includeStack.end(), embeddedName) != includeStack.end()) {
+                                std::string errorMsg = "Include loop detected: " + embeddedName;
+                                if (onMessage) onMessage(errorMsg);
+                                includedContent = "#error " + errorMsg + "\n";
+                            } else {
+                                includeStack.push_back(embeddedName);
+                                includedContent = preprocessSource(libContent, embeddedName, includeStack, uniqueIncludedFiles, switchFlags, sliders, uniformRanges, labels, lineMappings, groupChanges, currentGroup, currentLine);
+                                includeStack.pop_back();
+                            }
+                            found = true;
+                        }
+                    }
+                } else {
+                    // 3. Search locally in same folder as the shader (yyyy)
+                    std::filesystem::path currentDir = std::filesystem::path(filePath).parent_path();
+                    std::filesystem::path includePath = currentDir / includeFileName;
+                    
+                    if (std::filesystem::exists(includePath)) {
+                        includedContent = preprocessRecursive(includePath.string(), includeStack, uniqueIncludedFiles, switchFlags, sliders, uniformRanges, labels, lineMappings, groupChanges, currentGroup, currentLine);
+                        found = true;
                     }
                 }
 
-                if (foundInEmbedded) {
-                    // Recursively process embedded content
-                    std::string embeddedName = "embedded:" + includeFileName;
-                    if (std::find(includeStack.begin(), includeStack.end(), embeddedName) != includeStack.end()) {
-                        std::string errorMsg = "Include loop detected: " + embeddedName;
-                        if (onMessage) onMessage(errorMsg);
-                        includedContent = "#error " + errorMsg + "\n";
-                    } else {
-                        includeStack.push_back(embeddedName);
-                        includedContent = preprocessSource(libContent, embeddedName, includeStack, uniqueIncludedFiles, switchFlags, sliders, uniformRanges, labels, lineMappings, groupChanges, currentGroup, currentLine);
-                        includeStack.pop_back();
-                    }
-                } else if (!libInclude.empty()) {
-                    // explicit <lib> but not found
-                    std::string errorMsg = "Embedded library not found: " + includeFileName;
+                if (found) {
+                    preprocessedSource << includedContent;
+                } else {
+                    std::string errorMsg = "Include not found: " + includeFileName;
                     if (onMessage) onMessage(errorMsg);
                     preprocessedSource << "#error " + errorMsg + "\n";
                     lineMappings.push_back({currentLine++, filePath, fileLineNumber});
-                    continue;
-                } else {
-                    // Filesystem include
-                    std::filesystem::path currentDirPath = std::filesystem::path(filePath).parent_path();
-                    std::string includePath = (currentDirPath / includeFileName).string();
-                    
-                    // If not found in current dir, try libs/ relative to current dir
-                    if (!std::filesystem::exists(includePath)) {
-                        std::string libsRelativePath = (currentDirPath / "libs" / includeFileName).string();
-                        if (std::filesystem::exists(libsRelativePath)) {
-                            includePath = libsRelativePath;
-                        } else {
-                            // Try libs/ relative to project root (assume shaders is a sibling of libs)
-                            if (currentDirPath.filename() == "shaders") {
-                                std::string rootLibsPath = (currentDirPath.parent_path() / "libs" / includeFileName).string();
-                                if (std::filesystem::exists(rootLibsPath)) {
-                                    includePath = rootLibsPath;
-                                }
-                            }
-                        }
-                    }
-
-                    includedContent = preprocessRecursive(includePath, includeStack, uniqueIncludedFiles, switchFlags, sliders, uniformRanges, labels, lineMappings, groupChanges, currentGroup, currentLine);
                 }
-                preprocessedSource << includedContent;
             } else {
                 std::string errorMsg = "Invalid include directive: " + line;
                 if (onMessage) onMessage(errorMsg);
