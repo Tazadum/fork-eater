@@ -1,6 +1,6 @@
 #version 330 core
 
-#pragma include("utils.glsl")
+#pragma include(libs/utils.glsl)
 
 out vec4 FragColor;
 

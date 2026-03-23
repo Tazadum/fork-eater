@@ -5,7 +5,7 @@
 #pragma slider(SMOOTHNESS, 0.0, 0.1, 0.01, "Edge Softness")
 #pragma endgroup()
 
-#pragma include("utils.glsl")
+#pragma include(libs/utils.glsl)
 
 out vec4 FragColor;
 

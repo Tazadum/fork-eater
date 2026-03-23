@@ -6,8 +6,8 @@
 #pragma slider(SPARKLE_INTENSITY, 0.0, 1.0, 0.5, "Sparkle Intensity")
 #pragma endgroup()
 
-#pragma include("color.glsl")
-#pragma include("noise.glsl")
+#pragma include(libs/color.glsl)
+#pragma include(libs/noise.glsl)
 
 out vec4 FragColor;
 

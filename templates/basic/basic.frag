@@ -5,7 +5,7 @@
 #pragma slider(COLOR_FREQ, 0.1, 10.0, 1.0, "Color Frequency")
 #pragma endgroup()
 
-#pragma include("color.glsl")
+#pragma include(libs/color.glsl)
 
 out vec4 FragColor;
 

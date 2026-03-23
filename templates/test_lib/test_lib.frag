@@ -4,7 +4,7 @@
 #pragma slider(RADIUS, 0.1, 0.5, 0.25, "Circle Radius")
 #pragma endgroup()
 
-#pragma include("utils.glsl")
+#pragma include(libs/utils.glsl)
 
 out vec4 FragColor;
 

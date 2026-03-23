@@ -1,7 +1,7 @@
 #version 330 core
 
-#pragma include("camera.glsl")
-#pragma include("raymarching_vec3.glsl")
+#pragma include(libs/camera.glsl)
+#pragma include(libs/raymarching_vec3.glsl)
 
 out vec4 FragColor;
 
