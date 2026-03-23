@@ -15,7 +15,9 @@ void ParameterPanel::render(const std::string& shaderName) {
 
     bool hasUniforms = false;
     for (const auto& uniform : shader->uniforms) {
-        if (uniform.name != "iTime" && uniform.name != "iResolution" && uniform.name != "iMouse") {
+        if (uniform.name != "iTime" && uniform.name != "iResolution" && uniform.name != "iMouse" &&
+            uniform.name != "u_time" && uniform.name != "u_resolution" &&
+            uniform.name != "u_fork_cam_pos" && uniform.name != "u_fork_cam_target") {
             hasUniforms = true;
             break;
         }
@@ -37,7 +39,9 @@ void ParameterPanel::render(const std::string& shaderName) {
         
         for (auto& uniform : shader->uniforms) {
             // Skip system uniforms
-            if (uniform.name == "iTime" || uniform.name == "iResolution" || uniform.name == "iMouse") {
+            if (uniform.name == "iTime" || uniform.name == "iResolution" || uniform.name == "iMouse" ||
+                uniform.name == "u_time" || uniform.name == "u_resolution" ||
+                uniform.name == "u_fork_cam_pos" || uniform.name == "u_fork_cam_target") {
                 continue;
             }
 

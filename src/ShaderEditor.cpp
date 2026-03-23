@@ -633,10 +633,6 @@ bool ShaderEditor::loadProjectFromPath(const std::string& projectPath) {
                 }
             }
             
-            // Auto-start timeline playback
-            m_timeline->play();
-            LOG_INFO("Started timeline playback automatically");
-            
             // Save initial state (to capture any new defaults from pragmas)
             m_currentProject->saveState(m_shaderManager);
             
