@@ -45,8 +45,15 @@ bool ShaderProject::loadFromDirectory(const std::string& projectPath) {
     
     m_isLoaded = true;
     LOG_IMPORTANT("Successfully loaded shader project: {}", m_manifest.name);
+
+    // If the libs folder exists, ensure it is populated with libraries and metadata files
+    if (fs::exists(m_projectPath + "/libs")) {
+        exportLibraries();
+    }
+
     return true;
-}
+    }
+
 
 bool ShaderProject::saveToDirectory(const std::string& projectPath) const {
     if (projectPath != m_projectPath) {
@@ -644,7 +651,7 @@ bool ShaderProject::exportLibraries() const {
 
         for (const auto& [name, content] : EmbeddedLibraries::g_libs) {
             std::string outputPath = libsDirPath + "/" + name;
-            
+
             // Ensure subdirectories exist if the lib name contains them
             fs::path outPath(outputPath);
             if (outPath.has_parent_path()) {
@@ -659,9 +666,27 @@ bool ShaderProject::exportLibraries() const {
             outFile.write(content.first, static_cast<std::streamsize>(content.second));
             LOG_DEBUG("Exported: {}", name);
         }
-        
+
+        // Create .gitignore and READ_ONLY files in the libs folder
+        std::string gitignorePath = libsDirPath + "/" + SHADER_PROJECT_LIBS_GITIGNORE;
+        std::ofstream gitignoreFile(gitignorePath);
+        if (gitignoreFile.is_open()) {
+            gitignoreFile << "*\n";
+            LOG_DEBUG("Created: {}", SHADER_PROJECT_LIBS_GITIGNORE);
+        }
+
+        std::string readOnlyPath = libsDirPath + "/" + SHADER_PROJECT_LIBS_READ_ONLY;
+        std::ofstream readOnlyFile(readOnlyPath);
+        if (readOnlyFile.is_open()) {
+            readOnlyFile << "This folder contains libraries bundled with Fork Eater.\n";
+            readOnlyFile << "These files are automatically updated and should not be modified manually.\n";
+            readOnlyFile << "Changes made to these files will be overwritten.\n";
+            LOG_DEBUG("Created: {}", SHADER_PROJECT_LIBS_READ_ONLY);
+        }
+
         LOG_IMPORTANT("Successfully exported bundled libraries to {}", libsDirPath);
         return true;
+
     } catch (const std::exception& e) {
         LOG_ERROR("Failed to export libraries: {}", e.what());
         return false;

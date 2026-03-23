@@ -10,6 +10,8 @@
 // Constants
 static const char* const SHADER_PROJECT_MANIFEST_FILENAME = "4k-eater.project";
 static const char* const SHADER_PROJECT_LOCAL_FILENAME = ".4k-eater.local";
+static const char* const SHADER_PROJECT_LIBS_GITIGNORE = ".gitignore";
+static const char* const SHADER_PROJECT_LIBS_READ_ONLY = "READ_ONLY";
 
 // Forward declarations
 class ShaderManager;
