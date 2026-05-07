@@ -1,18 +1,9 @@
 {
   "sliders": {
-    "ITERATIONS": 2.25
+    "ITERATIONS": 2.0
   },
   "switches": {
     "USE_BLUE": false
   },
-  "uniforms": {
-    "main": {
-      "brightness": [
-        0.7160000205039978
-      ],
-      "speed": [
-        2.190000057220459
-      ]
-    }
-  }
+  "uniforms": {}
 }

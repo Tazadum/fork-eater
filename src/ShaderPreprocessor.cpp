@@ -75,8 +75,8 @@ bool shouldDiscard() {
             insertionLine = 1;
         }
 
-        // Shift metadata after the injection point
-        auto shiftMetadata = [&](int fromLine, int delta) {
+        // Shift metadata after the injection point and insert new mappings
+        auto shiftMetadata = [&](int fromLine, int delta, const std::string& virtualPath, int startFileLine) {
             for (auto& range : result.uniformRanges) {
                 if (range.line >= fromLine) range.line += delta;
             }
@@ -86,9 +86,19 @@ bool shouldDiscard() {
             for (auto& mapping : result.lineMappings) {
                 if (mapping.preprocessedLine >= fromLine) mapping.preprocessedLine += delta;
             }
+
+            // Insert new mappings for the injected code
+            for (int i = 0; i < delta; ++i) {
+                result.lineMappings.push_back({fromLine + i, virtualPath, startFileLine + i});
+            }
+            // Keep mappings sorted by preprocessedLine
+            std::sort(result.lineMappings.begin(), result.lineMappings.end(), [](const LineMapping& a, const LineMapping& b) {
+                return a.preprocessedLine < b.preprocessedLine;
+            });
         };
 
-        shiftMetadata(insertionLine, insertedLines);
+        const std::string chunkVirtualPath = "<internal:chunk_logic>";
+        shiftMetadata(insertionLine, insertedLines, chunkVirtualPath, 1);
         
         // Insert discard check at start of main
         std::regex mainRegex(R"(void\s+main\s*\(\s*\)\s*\{)");
@@ -103,7 +113,7 @@ bool shouldDiscard() {
             int discardLines = std::count(discardLogic.begin(), discardLogic.end(), '\n');
             
             result.source.insert(mainPos, discardLogic);
-            shiftMetadata(mainLine + 1, discardLines);
+            shiftMetadata(mainLine, discardLines, chunkVirtualPath, insertedLines + 1);
         }
     }
     
@@ -160,59 +170,56 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
                                                  int& currentLine) {
     LOG_DEBUG("Processing source for: {}", filePath);
 
-    std::stringstream preprocessedSource;
-    std::string versionDirective;
-    std::stringstream content;
+    struct SourceLine {
+        std::string content;
+        int originalLineNumber;
+    };
+
+    std::vector<SourceLine> sourceLines;
     std::stringstream ss(source);
     std::string line;
-    std::regex versionRegex(R"x(\s*#\s*version\s+\d+\s+\w*)x");
-
-    // First, separate the #version directive from the rest of the content
+    int lineCounter = 0;
     while (std::getline(ss, line)) {
-        if (std::regex_match(line, versionRegex) && versionDirective.empty()) {
-            versionDirective = line + "\n";
+        sourceLines.push_back({line, ++lineCounter});
+    }
+
+    std::regex versionRegex(R"x(\s*#\s*version\s+\d+\s+\w*)x");
+    SourceLine versionDirective = {"", 0};
+
+    // Extract #version directive if present
+    for (auto it = sourceLines.begin(); it != sourceLines.end(); ) {
+        if (std::regex_match(it->content, versionRegex) && versionDirective.content.empty()) {
+            versionDirective = *it;
+            it = sourceLines.erase(it);
         } else {
-            content << line << "\n";
+            ++it;
         }
     }
 
-    // Now, process the content for includes and other pragmas
-    if (!versionDirective.empty()) {
-        preprocessedSource << versionDirective;
-        // The version directive takes up one line (it includes the newline)
-        // We only increment if this is the top-level file (currentLine == 1)
-        // because sub-files shouldn't have #version anyway, but if they do,
-        // it might be stripped or handled differently.
-        // Actually, preprocessRecursive sets currentLine.
-        if (currentLine == 1) {
-            lineMappings.push_back({currentLine++, filePath, 1}); // Map #version line
-        }
+    std::stringstream preprocessedSource;
+
+    // Process version directive first
+    if (!versionDirective.content.empty()) {
+        preprocessedSource << versionDirective.content << "\n";
+        lineMappings.push_back({currentLine++, filePath, versionDirective.originalLineNumber});
     }
-    
-    ss.clear();
-    ss.str(content.str());
     
     std::regex includeRegex(R"x(#pragma\s+include\s*(?:\(\s*)?(?:<([^>]+)>|"([^"]+)"|([^\s\)"<]+))(?:\s*\))?)x");
-    // #pragma switch(NAME [, defaultValue] [, "offLabel" [, "onLabel"]])
     std::regex switchRegex(R"x(#pragma\s+switch\s*\(\s*([a-zA-Z0-9_]+)\s*(?:,\s*(true|false|on|off|0|1))?\s*(?:,\s*["']([^"']+)["'])?\s*(?:,\s*["']([^"']+)["'])?\s*\))x");
-    // #pragma slider(NAME, min, max [, defaultValue [, "Label"]])
     std::regex sliderRegex(R"x(#pragma\s+slider\s*\(\s*([a-zA-Z0-9_]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)\s*(?:,\s*([-+]?[0-9]*\.?[0-9]+))?\s*(?:,\s*["']([^"']+)["'])?\s*\))x");
-    // #pragma range(NAME, min, max [, defaultValue [, "Label"]])
     std::regex rangeRegex(R"x(#pragma\s+range\s*\(\s*([a-zA-Z0-9_]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)\s*(?:,\s*([-+]?[0-9]*\.?[0-9]+))?\s*(?:,\s*["']([^"']+)["'])?\s*\))x");
-    // #pragma range(min, max [, defaultValue [, "Label"]])
     std::regex rangePositionalRegex(R"x(#pragma\s+range\s*\(\s*([-+]?[0-9]*\.?[0-9]+)\s*,\s*([-+]?[0-9]*\.?[0-9]+)\s*(?:,\s*([-+]?[0-9]*\.?[0-9]+))?\s*(?:,\s*["']([^"']+)["'])?\s*\))x");
     std::regex labelRegex(R"x(#pragma\s+label\s*\(\s*([a-zA-Z0-9_]+)\s*,\s*["']([^"']+)["']\s*\))x");
     std::regex groupRegex(R"x(#pragma\s+group\s*\(\s*["']([^"']+)["']\s*\))x");
     std::regex endGroupRegex(R"x(#pragma\s+endgroup\s*(?:\(\s*\))?)x");
 
-    int fileLineNumber = 0;
-    
-    while (std::getline(ss, line)) {
-        ++fileLineNumber;
+    for (const auto& sourceLine : sourceLines) {
+        std::string currentLineContent = sourceLine.content;
+        int fileLineNumber = sourceLine.originalLineNumber;
         std::smatch matches;
 
         // Scan for group start
-        if (std::regex_search(line, matches, groupRegex)) {
+        if (std::regex_search(currentLineContent, matches, groupRegex)) {
             if (matches.size() >= 2) {
                 currentGroup = matches[1].str();
                 groupChanges.push_back({currentLine, currentGroup});
@@ -220,13 +227,13 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
         }
         
         // Scan for group end
-        if (std::regex_search(line, matches, endGroupRegex)) {
+        if (std::regex_search(currentLineContent, matches, endGroupRegex)) {
             currentGroup = "";
             groupChanges.push_back({currentLine, ""});
         }
 
         // Scan for all switches on the line
-        auto switchBegin = std::sregex_iterator(line.begin(), line.end(), switchRegex);
+        auto switchBegin = std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), switchRegex);
         auto switchEnd = std::sregex_iterator();
         
         for (std::sregex_iterator i = switchBegin; i != switchEnd; ++i) {
@@ -254,7 +261,7 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
         }
 
         // Scan for sliders
-        auto sliderBegin = std::sregex_iterator(line.begin(), line.end(), sliderRegex);
+        auto sliderBegin = std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), sliderRegex);
         for (std::sregex_iterator i = sliderBegin; i != switchEnd; ++i) {
             std::smatch match = *i;
             if (match.size() >= 4) {
@@ -276,7 +283,7 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
             }
         }
         // Scan for named ranges
-        auto rangeBegin = std::sregex_iterator(line.begin(), line.end(), rangeRegex);
+        auto rangeBegin = std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), rangeRegex);
         for (std::sregex_iterator i = rangeBegin; i != switchEnd; ++i) {
             std::smatch match = *i;
             if (match.size() >= 4) {
@@ -298,7 +305,7 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
         }
         
         // Scan for positional ranges (min, max [, defaultValue [, "label"]])
-        auto rangePosBegin = std::sregex_iterator(line.begin(), line.end(), rangePositionalRegex);
+        auto rangePosBegin = std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), rangePositionalRegex);
         for (std::sregex_iterator i = rangePosBegin; i != switchEnd; ++i) {
             std::smatch match = *i;
             if (match.size() >= 3) {
@@ -320,7 +327,7 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
         }
 
         // Scan for labels
-        auto labelBegin = std::sregex_iterator(line.begin(), line.end(), labelRegex);
+        auto labelBegin = std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), labelRegex);
         for (std::sregex_iterator i = labelBegin; i != switchEnd; ++i) {
             std::smatch match = *i;
             if (match.size() == 3) {
@@ -328,7 +335,7 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
             }
         }
 
-        if (std::regex_search(line, matches, includeRegex)) {
+        if (std::regex_search(currentLineContent, matches, includeRegex)) {
             if (matches.size() >= 4) {
                 std::string libInclude = matches[1].str();
                 std::string quoteInclude = matches[2].str();
@@ -411,21 +418,21 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
                     lineMappings.push_back({currentLine++, filePath, fileLineNumber});
                 }
             } else {
-                std::string errorMsg = "Invalid include directive: " + line;
+                std::string errorMsg = "Invalid include directive: " + currentLineContent;
                 if (onMessage) onMessage(errorMsg);
                 preprocessedSource << "#error " + errorMsg + "\n";
                 lineMappings.push_back({currentLine++, filePath, fileLineNumber});
             }
-        } else if (std::sregex_iterator(line.begin(), line.end(), switchRegex) != switchEnd ||
-                   std::sregex_iterator(line.begin(), line.end(), sliderRegex) != switchEnd ||
-                   std::sregex_iterator(line.begin(), line.end(), rangeRegex) != switchEnd ||
-                   std::sregex_iterator(line.begin(), line.end(), rangePositionalRegex) != switchEnd ||
-                   std::sregex_iterator(line.begin(), line.end(), labelRegex) != switchEnd ||
-                   std::regex_search(line, groupRegex) ||
-                   std::regex_search(line, endGroupRegex)) {
+        } else if (std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), switchRegex) != switchEnd ||
+                   std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), sliderRegex) != switchEnd ||
+                   std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), rangeRegex) != switchEnd ||
+                   std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), rangePositionalRegex) != switchEnd ||
+                   std::sregex_iterator(currentLineContent.begin(), currentLineContent.end(), labelRegex) != switchEnd ||
+                   std::regex_search(currentLineContent, groupRegex) ||
+                   std::regex_search(currentLineContent, endGroupRegex)) {
             // Line contained pragmas that we parsed above, so we consume it.
         } else {
-            preprocessedSource << line << "\n";
+            preprocessedSource << currentLineContent << "\n";
             lineMappings.push_back({currentLine++, filePath, fileLineNumber});
         }
     }

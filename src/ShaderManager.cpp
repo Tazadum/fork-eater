@@ -606,21 +606,43 @@ std::string ShaderManager::remapErrorLog(const std::string& log, const std::vect
     std::stringstream input(log);
     std::stringstream output;
     std::string line;
-    std::regex lineRegex(R"((\d+):(\d+)(?:\(\d+\))?)");
+
+    // Support multiple driver error formats
+    // 1. Standard/Mesa/AMD/Intel: "0:123" or "0:123(5)"
+    // 2. NVIDIA: "0(123)"
+    // 3. MacOS/Others: "ERROR: 0:123"
+    std::vector<std::regex> lineRegexes = {
+        std::regex(R"((\d+)[:(](\d+)(?:\(\d+\))?[:)]?)"), // Matches 0:123, 0(123), 0:123(5)
+        std::regex(R"(ERROR:\s*(\d+):(\d+))"),           // Matches ERROR: 0:123
+        std::regex(R"(^(\d+):)"),                         // Matches 123: at start of line
+        std::regex(R"(\((\d+)\))")                         // Matches (123)
+    };
+
     bool first = true;
 
     while (std::getline(input, line)) {
         std::smatch match;
         std::string remappedLine = line;
+        int preprocessedLine = 0;
+        bool foundMatch = false;
 
-        if (std::regex_search(line, match, lineRegex) && match.size() >= 3) {
-            int preprocessedLine = 0;
-            try {
-                preprocessedLine = std::stoi(match[2].str());
-            } catch (...) {
-                preprocessedLine = 0;
+        for (const auto& regex : lineRegexes) {
+            if (std::regex_search(line, match, regex)) {
+                // For most regexes, the line number is in the second group if it has multiple groups, 
+                // or first group if it has only one.
+                if (match.size() >= 3) {
+                    preprocessedLine = std::stoi(match[2].str());
+                    foundMatch = true;
+                    break;
+                } else if (match.size() == 2) {
+                    preprocessedLine = std::stoi(match[1].str());
+                    foundMatch = true;
+                    break;
+                }
             }
+        }
 
+        if (foundMatch) {
             const ShaderPreprocessor::LineMapping* mappingPtr = nullptr;
             auto lookup = [&](int lineNumber) -> const ShaderPreprocessor::LineMapping* {
                 if (lineNumber > 0 && static_cast<size_t>(lineNumber) < has.size() && has[static_cast<size_t>(lineNumber)]) {
@@ -630,8 +652,13 @@ std::string ShaderManager::remapErrorLog(const std::string& log, const std::vect
             };
 
             mappingPtr = lookup(preprocessedLine);
+            if (!mappingPtr) {
+                // Try off-by-one correction (some drivers are 0-based)
+                mappingPtr = lookup(preprocessedLine + 1);
+            }
+            
             if (!mappingPtr && preprocessedLine > 1) {
-                // Try off-by-one correction since some drivers report 0-based lines
+                // Try the other direction just in case
                 mappingPtr = lookup(preprocessedLine - 1);
             }
 
