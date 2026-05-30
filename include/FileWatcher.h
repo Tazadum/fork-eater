@@ -6,31 +6,19 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
-#include <sys/inotify.h>
 
 class FileWatcher {
 public:
     using FileChangedCallback = std::function<void(const std::string&)>;
-    
+
     FileWatcher();
     ~FileWatcher();
-    
-    // Start watching for file changes
-    bool start();
-    
-    // Stop watching for file changes
-    void stop();
-    
-    // Add file to watch list
-    bool addWatch(const std::string& filePath, FileChangedCallback callback);
-    
-    // Remove file from watch list
-    void removeWatch(const std::string& filePath);
 
-    // Clear all watches
+    bool start();
+    void stop();
+    bool addWatch(const std::string& filePath, FileChangedCallback callback);
+    void removeWatch(const std::string& filePath);
     void clearWatches();
-    
-    // Check if currently watching
     bool isWatching() const;
 
 private:
@@ -39,19 +27,26 @@ private:
         std::string filePath;
         FileChangedCallback callback;
     };
-    
-    int m_inotifyFd;
+
     std::atomic<bool> m_running;
     std::thread m_watchThread;
     std::unordered_map<std::string, WatchInfo> m_watches;
     std::unordered_map<int, std::string> m_watchDescriptorToPath;
     mutable std::mutex m_watchMutex;
-    
-    // Thread function for watching files
-    void watchThread();
-    
-    // Process inotify events
-    void processEvents(char* buffer, ssize_t length);
 
+    void watchThread();
     void rearmWatch(const WatchInfo& info);
+
+#ifdef _WIN32
+    void* m_stopEvent;
+    int m_nextWatchId;
+    bool platformStart();
+    void platformStop();
+    bool platformAddWatch(const std::string& filePath, FileChangedCallback callback, int& outWatchId);
+    void platformRemoveWatch(int watchId);
+    void platformClearWatches();
+    void dispatchFileEvent(const std::string& filePath, unsigned long action);
+#else
+    int m_inotifyFd;
+#endif
 };

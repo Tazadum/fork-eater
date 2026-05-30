@@ -4,6 +4,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cmath>
+#include <cstdlib>
 
 #include "imgui/imgui.h"
 
@@ -353,20 +354,28 @@ void Settings::saveToFile() {
 }
 
 std::string Settings::getSettingsPath() const {
-    // Store settings in user config directory
-    std::string configDir;
-    
-    const char* xdgConfig = getenv("XDG_CONFIG_HOME");
-    if (xdgConfig) {
-        configDir = xdgConfig;
+    std::filesystem::path configDir;
+
+#if defined(_WIN32)
+    const char* appData = std::getenv("APPDATA");
+    if (appData) {
+        configDir = std::filesystem::path(appData);
     } else {
-        const char* home = getenv("HOME");
+        configDir = std::filesystem::path(".");
+    }
+#else
+    const char* xdgConfig = std::getenv("XDG_CONFIG_HOME");
+    if (xdgConfig) {
+        configDir = std::filesystem::path(xdgConfig);
+    } else {
+        const char* home = std::getenv("HOME");
         if (home) {
-            configDir = std::string(home) + "/.config";
+            configDir = std::filesystem::path(home) / ".config";
         } else {
-            configDir = "."; // fallback to current directory
+            configDir = std::filesystem::path(".");
         }
     }
-    
-    return configDir + "/fork-eater/settings.conf";
+#endif
+
+    return (configDir / "fork-eater" / "settings.conf").string();
 }
