@@ -551,9 +551,9 @@ int main(int argc, char* argv[]) {
     
     if (testMode) {
         app.setTestMode(true, testExitCode);
-        // In test mode, use basic shader if no project specified
+        // In test mode, use the sample project if none specified (see project/test/)
         if (shaderProjectPath.empty()) {
-            shaderProjectPath = "shaders/basic";
+            shaderProjectPath = "project/test";
         }
     }
     

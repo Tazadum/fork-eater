@@ -10,7 +10,7 @@ enum class LogLevel {
     INFO = 1,
     IMPORTANT = 2,
     WARN = 3,
-    ERROR = 4,
+    Error = 4,
     OK = 5
 };
 
@@ -74,9 +74,9 @@ public:
     
     template<typename... Args>
     void error(const std::string& format, Args&&... args) {
-        if (shouldLog(LogLevel::ERROR)) {
+        if (shouldLog(LogLevel::Error)) {
             std::string message = formatMessage(format, std::forward<Args>(args)...);
-            logMessage(LogLevel::ERROR, message);
+            logMessage(LogLevel::Error, message);
         }
     }
     

@@ -11,8 +11,8 @@ A real-time OpenGL/GLSL shader editor with hot reloading capabilities built with
   - Text editor for vertex and fragment shaders
   - Compilation log with error reporting
   - Live preview window
-- **File watching** using Linux inotify for automatic recompilation
-- **Cross-platform** design (currently Linux-focused)
+- **File watching** for automatic recompilation (inotify on Linux, `ReadDirectoryChangesW` on Windows)
+- **Cross-platform** design (Linux, Windows MSVC, Windows MSYS2/MinGW)
 
 ## Prerequisites
 
@@ -37,6 +37,34 @@ sudo pacman -S base-devel cmake pkg-config
 sudo pacman -S glfw-x11 mesa glu
 ```
 
+### Windows (MSVC — native PowerShell)
+
+- [CMake](https://cmake.org/) (e.g. `winget install Kitware.CMake`)
+- Visual Studio 2022 Build Tools with **Desktop development with C++**
+- Git (for cloning Dear ImGui)
+- Optional: [vcpkg](https://vcpkg.io) with `glfw3` (otherwise CMake fetches GLFW automatically)
+
+```powershell
+.\build.ps1
+.\build\fork-eater.exe --test
+.\run.ps1 project\test
+```
+
+With vcpkg: set `VCPKG_ROOT`, then configure with  
+`-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake`  
+or use the `windows-msvc-vcpkg` preset in `CMakePresets.json`.
+
+### Windows (MSYS2 MinGW)
+
+From the **MINGW64** shell:
+
+```bash
+pacman -S --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake \
+  mingw-w64-x86_64-glfw mingw-w64-x86_64-pkg-config
+./build.sh
+./build/fork-eater.exe --test
+```
+
 ## Building
 
 The build script automatically handles cloning Dear ImGui.
@@ -45,10 +73,15 @@ The build script automatically handles cloning Dear ImGui.
 ./build.sh
 ```
 
+On Windows (MSVC): `.\build.ps1`
+
 4. **Run the shader editor**:
 ```bash
-./fork-eater
+./build/fork-eater          # Linux
+./build/fork-eater.exe      # Windows
 ```
+
+Or use `./run.sh` / `.\run.ps1`.
 
 ## Project Structure
 
@@ -159,7 +192,7 @@ For a detailed guide on the shader development workflow, including advanced feat
 ### Core Components
 
 1. **ShaderManager**: Handles OpenGL shader compilation, linking, and management
-2. **FileWatcher**: Uses Linux inotify to monitor file changes for hot reloading  
+2. **FileWatcher**: Monitors file changes for hot reloading (inotify on Linux, `ReadDirectoryChangesW` on Windows)
 3. **ShaderEditor**: Dear ImGui-based interface for editing and preview
 4. **Application**: GLFW window management and main loop
 
@@ -168,7 +201,7 @@ For a detailed guide on the shader development workflow, including advanced feat
 - **GLFW**: Lightweight cross-platform windowing and OpenGL context management
 - **OpenGL 3.3+**: Graphics rendering and shader support
 - **Dear ImGui**: Immediate mode GUI for the editor interface
-- **Linux inotify**: File system monitoring for hot reloading
+- **File system monitoring**: inotify (Linux) or `ReadDirectoryChangesW` (Windows) for hot reloading
 
 ## Development
 
@@ -193,7 +226,7 @@ make -j$(nproc)
 1. **ImGui not found**: Make sure to clone ImGui into `external/imgui/`
 2. **GLFW linking errors**: Install GLFW development packages for your distribution
 3. **OpenGL context errors**: Ensure you have working OpenGL drivers
-4. **File watching not working**: FileWatcher currently requires Linux with inotify support
+4. **File watching not working**: Ensure the shader path exists and Auto Reload is enabled; on Windows, settings are stored under `%APPDATA%\fork-eater\`
 
 ## License
 
@@ -205,7 +238,7 @@ GLFW is licensed under the zlib License.
 ## Contributing
 
 Feel free to submit issues and pull requests. Areas for improvement:
-- Cross-platform file watching (Windows, macOS)
+- macOS file watching and build support
 - Better text editor with syntax highlighting
 - Shader uniform GUI controls
 - Export/import functionality

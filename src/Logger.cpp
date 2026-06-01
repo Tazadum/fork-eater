@@ -1,6 +1,11 @@
 #include "Logger.h"
-#include <unistd.h>
 #include <cstdlib>
+
+#if defined(_WIN32)
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 Logger& Logger::getInstance() {
     static Logger instance;
@@ -51,8 +56,8 @@ void Logger::warn(const std::string& message) {
 }
 
 void Logger::error(const std::string& message) {
-    if (shouldLog(LogLevel::ERROR)) {
-        logMessage(LogLevel::ERROR, message);
+    if (shouldLog(LogLevel::Error)) {
+        logMessage(LogLevel::Error, message);
     }
 }
 
@@ -69,7 +74,7 @@ void Logger::important(const std::string& message) {
 }
 
 void Logger::logMessage(LogLevel level, const std::string& message) {
-    std::ostream& output = (level == LogLevel::ERROR) ? std::cerr : std::cout;
+    std::ostream& output = (level == LogLevel::Error) ? std::cerr : std::cout;
     
     if (m_colorSupport) {
         output << getColorCode(level);
@@ -102,7 +107,7 @@ std::string Logger::getColorCode(LogLevel level) const {
             return "\033[37m";    // White
         case LogLevel::WARN:
             return "\033[33m";    // Yellow
-        case LogLevel::ERROR:
+        case LogLevel::Error:
             return "\033[31m";    // Red
         case LogLevel::OK:
             return "\033[32m";    // Green
@@ -121,7 +126,7 @@ std::string Logger::getLevelPrefix(LogLevel level) const {
             return "[INFO ]";
         case LogLevel::WARN:
             return "[WARN ]";
-        case LogLevel::ERROR:
+        case LogLevel::Error:
             return "[ERROR]";
         case LogLevel::OK:
             return "[OK   ]";
@@ -135,19 +140,27 @@ std::string Logger::getResetCode() const {
 }
 
 bool Logger::supportsColors() const {
-    // Check if we're writing to a terminal and if color is supported
-    if (!isatty(STDOUT_FILENO)) {
+#if defined(_WIN32)
+    if (_isatty(_fileno(stdout)) == 0) {
         return false;
     }
-    
-    // Check environment variables that indicate color support
+    if (std::getenv("WT_SESSION") != nullptr ||
+        std::getenv("ANSICON") != nullptr) {
+        return true;
+    }
+#else
+    if (isatty(STDOUT_FILENO) == 0) {
+        return false;
+    }
+#endif
+
     const char* term = std::getenv("TERM");
     const char* colorterm = std::getenv("COLORTERM");
-    
+
     if (colorterm != nullptr) {
         return true;
     }
-    
+
     if (term != nullptr) {
         std::string termStr(term);
         if (termStr.find("color") != std::string::npos ||
@@ -157,6 +170,10 @@ bool Logger::supportsColors() const {
             return true;
         }
     }
-    
+
+#if defined(_WIN32)
+    return _isatty(_fileno(stdout)) != 0;
+#else
     return false;
+#endif
 }
