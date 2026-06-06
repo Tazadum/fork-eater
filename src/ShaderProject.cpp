@@ -266,7 +266,8 @@ bool ShaderProject::parseManifestJson(const std::string& jsonContent) {
                 
                 // If a file is specified, load it
                 if (!buffer.file.empty()) {
-                    std::string filePath = m_projectPath + "/" + buffer.file;
+                    fs::path filePath = fs::path(m_projectPath) / buffer.file;
+                    filePath = filePath.lexically_normal();
                     if (fs::exists(filePath)) {
                         std::ifstream csvFile(filePath);
                         if (csvFile.is_open()) {
@@ -282,12 +283,12 @@ bool ShaderProject::parseManifestJson(const std::string& jsonContent) {
                                     buffer.data.push_back(val);
                                 }
                             }
-                            LOG_DEBUG("Loaded {} values from buffer file: {}", buffer.data.size(), filePath);
+                            LOG_DEBUG("Loaded {} values from buffer file: {}", buffer.data.size(), filePath.string());
                         } else {
-                            LOG_ERROR("Failed to open buffer file: {}", filePath);
+                            LOG_ERROR("Failed to open buffer file: {}", filePath.string());
                         }
                     } else {
-                        LOG_ERROR("Buffer file does not exist: {}", filePath);
+                        LOG_ERROR("Buffer file does not exist: {}", filePath.string());
                     }
                 }
                 
