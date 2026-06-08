@@ -46,10 +46,8 @@ bool ShaderProject::loadFromDirectory(const std::string& projectPath) {
     m_isLoaded = true;
     LOG_IMPORTANT("Successfully loaded shader project: {}", m_manifest.name);
 
-    // If the libs folder exists, ensure it is populated with libraries and metadata files
-    if (fs::exists(m_projectPath + "/libs")) {
-        exportLibraries();
-    }
+    // Ensure the libs folder is created and populated with libraries and metadata files
+    exportLibraries();
 
     return true;
     }
