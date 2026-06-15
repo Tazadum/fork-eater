@@ -52,6 +52,7 @@ public:
     void play();
     void pause();
     void stop();
+    void setCurrentTime(float time);
     
     // Add FPS value to buffer
     void addFPS(float time, float fps, float renderScaleFactor);
@@ -100,7 +101,6 @@ private:
     void renderSpeedControl();
     void handlePlayPause();
     void handleStop();
-    void setCurrentTime(float time);
     void formatTime(float timeSeconds, char* buffer, size_t bufferSize);
     
     // BPM helper methods

@@ -66,6 +66,7 @@ set(SOURCES
     src/LeftPanel.cpp
     src/FileManager.cpp
     src/Timeline.cpp
+    src/AudioSystem.cpp
     src/ShortcutManager.cpp
     src/ShaderProject.cpp
     src/ShaderTemplates.cpp
@@ -178,6 +179,13 @@ else()
         dl
         pthread
     )
+    if(APPLE)
+        target_link_libraries(${PROJECT_NAME} PRIVATE
+            "-framework CoreAudio"
+            "-framework AudioToolbox"
+            "-framework CoreFoundation"
+        )
+    endif()
 endif()
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/templates DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/shaders)

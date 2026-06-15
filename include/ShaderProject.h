@@ -42,6 +42,7 @@ struct ShaderProjectManifest {
     float bpm = 120.0f;             // Beats per minute
     int beatsPerBar = 4;            // For timeline display
     std::string version = "1.0";
+    std::string audioFile;          // Path to audio file (MP3)
     
     // Calculated properties
     float getBeatsPerSecond() const { return bpm / 60.0f; }

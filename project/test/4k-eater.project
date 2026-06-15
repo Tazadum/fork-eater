@@ -5,6 +5,7 @@
   "timelineLength": 10.0,
   "bpm": 120.0,
   "beatsPerBar": 4,
+  "audio": "assets/export_01.mp3",
   "passes": [
     {
       "name": "main2",

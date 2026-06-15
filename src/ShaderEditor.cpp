@@ -8,6 +8,7 @@
 #include "ParameterPanel.h"
 
 #include "Timeline.h"
+#include "AudioSystem.h"
 #include "ShortcutManager.h"
 #include "ShaderProject.h"
 #include "Logger.h"
@@ -39,7 +40,8 @@ ShaderEditor::ShaderEditor(std::shared_ptr<ShaderManager> shaderManager,
     , m_screenHeight(720)
     , m_renderScaleFactor(1.0f)
     , m_framesAboveHighThreshold(0)
-    , m_framesBelowLowThreshold(0) {
+    , m_framesBelowLowThreshold(0)
+    , m_isUpdatingTimeFromAudio(false) {
     
     // Create component classes
     m_previewPanel = std::make_unique<PreviewPanel>(m_shaderManager);
@@ -51,6 +53,7 @@ ShaderEditor::ShaderEditor(std::shared_ptr<ShaderManager> shaderManager,
     m_timeline = std::make_unique<Timeline>();
     m_shortcutManager = std::make_unique<ShortcutManager>();
     m_currentProject = std::make_shared<ShaderProject>();
+    m_audioSystem = std::make_unique<AudioSystem>();
 }
 
 void ShaderEditor::setScreenSize(int width, int height) {
@@ -317,8 +320,31 @@ void ShaderEditor::render() {
     
     ImGui::PopStyleVar(); // ScrollbarSize
     
+    // Sync speed to audio system
+    if (m_audioSystem) {
+        m_audioSystem->setPlaybackSpeed(m_timeline->getPlaybackSpeed());
+    }
+
     // Update timeline
-    m_timeline->update(ImGui::GetIO().DeltaTime);
+    if (m_audioSystem && m_audioSystem->isAudioLoaded() && m_timeline->isPlaying() && m_timeline->getPlaybackSpeed() == 1.0f) {
+        float audioTime = m_audioSystem->getCurrentTime();
+        float duration = m_timeline->getDuration();
+        
+        if (audioTime >= duration) {
+            if (m_timeline->isLooping()) {
+                m_timeline->jumpToStart();
+            } else {
+                m_timeline->pause();
+                m_timeline->jumpToEnd();
+            }
+        } else {
+            m_isUpdatingTimeFromAudio = true;
+            m_timeline->setCurrentTime(audioTime);
+            m_isUpdatingTimeFromAudio = false;
+        }
+    } else {
+        m_timeline->update(ImGui::GetIO().DeltaTime);
+    }
     
     // Render settings window if requested
     m_menuSystem->renderSettingsWindow();
@@ -363,6 +389,12 @@ bool ShaderEditor::initialize() {
     // Initialize components
     if (!m_previewPanel->initialize()) {
         return false;
+    }
+
+    if (m_audioSystem) {
+        if (!m_audioSystem->initialize()) {
+            LOG_WARN("Could not initialize AudioSystem. Playback won't be available.");
+        }
     }
     
     // Setup callbacks between components
@@ -411,7 +443,27 @@ void ShaderEditor::setupCallbacks() {
             m_currentProject->loadShadersIntoManager(m_shaderManager);
         }
     };
-    
+
+    // Timeline and AudioSystem sync callbacks
+    m_timeline->onTimeChanged = [this](float time) {
+        if (!m_isUpdatingTimeFromAudio && m_audioSystem) {
+            m_audioSystem->seekTo(time);
+        }
+    };
+
+    m_timeline->onPlayStateChanged = [this](bool playing) {
+        if (m_audioSystem) {
+            m_audioSystem->setPlaying(playing);
+            m_audioSystem->seekTo(m_timeline->getCurrentTime());
+        }
+    };
+
+    m_timeline->onReset = [this]() {
+        if (m_audioSystem) {
+            m_audioSystem->seekTo(0.0f);
+            m_audioSystem->setPlaying(false);
+        }
+    };
 }
 
 
@@ -597,6 +649,10 @@ bool ShaderEditor::loadProjectFromPath(const std::string& projectPath) {
     // Clear current shaders
     m_shaderManager->clearShaders();
     m_passOutputSizes.clear();
+
+    if (m_audioSystem) {
+        m_audioSystem->unloadAudio();
+    }
     
     bool success = false;
     
@@ -605,6 +661,20 @@ bool ShaderEditor::loadProjectFromPath(const std::string& projectPath) {
         if (m_currentProject->loadShadersIntoManager(m_shaderManager)) {
             LOG_INFO("Loaded shader project: {}", m_currentProject->getManifest().name);
             m_leftPanel->setCurrentProject(m_currentProject);
+
+            // Configure timeline from manifest
+            const auto& manifest = m_currentProject->getManifest();
+            m_timeline->setDuration(manifest.timelineLength);
+            m_timeline->setBPM(manifest.bpm, manifest.beatsPerBar);
+
+            // Load project audio if specified
+            if (m_audioSystem) {
+                if (!manifest.audioFile.empty()) {
+                    std::filesystem::path projectRoot(projectPath);
+                    std::filesystem::path audioPath = projectRoot / manifest.audioFile;
+                    m_audioSystem->loadAudio(audioPath.string());
+                }
+            }
             
             // Load local project state
             LocalProjectState localState;

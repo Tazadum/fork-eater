@@ -22,6 +22,7 @@ class ParameterPanel;
 class Timeline;
 class ShortcutManager;
 class ShaderProject;
+class AudioSystem;
 
 class ShaderEditor {
 public:
@@ -72,6 +73,8 @@ private:
 
     std::unique_ptr<Timeline> m_timeline;
     std::unique_ptr<ShortcutManager> m_shortcutManager;
+    std::unique_ptr<AudioSystem> m_audioSystem;
+    bool m_isUpdatingTimeFromAudio;
     
     // Project management
     std::shared_ptr<ShaderProject> m_currentProject;

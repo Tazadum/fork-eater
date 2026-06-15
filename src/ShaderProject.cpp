@@ -235,6 +235,7 @@ bool ShaderProject::parseManifestJson(const std::string& jsonContent) {
         m_manifest.timelineLength = j.value("timelineLength", 120.0f);
         m_manifest.bpm = j.value("bpm", 120.0f);
         m_manifest.beatsPerBar = j.value("beatsPerBar", 4);
+        m_manifest.audioFile = j.value("audio", "");
         
         m_manifest.passes.clear();
         if (j.contains("passes") && j["passes"].is_array()) {
@@ -317,6 +318,9 @@ std::string ShaderProject::generateManifestJson() const {
     j["timelineLength"] = m_manifest.timelineLength;
     j["bpm"] = m_manifest.bpm;
     j["beatsPerBar"] = m_manifest.beatsPerBar;
+    if (!m_manifest.audioFile.empty()) {
+        j["audio"] = m_manifest.audioFile;
+    }
     
     j["passes"] = json::array();
     for (const auto& pass : m_manifest.passes) {
