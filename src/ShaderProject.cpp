@@ -265,6 +265,7 @@ bool ShaderProject::parseManifestJson(const std::string& jsonContent) {
                     buffer.dataType = bufferJson.value("dataType", "float");
                 }
                 buffer.file = bufferJson.value("file", "");
+                buffer.striped = bufferJson.value("striped", false);
                 
                 if (bufferJson.contains("data") && bufferJson["data"].is_array()) {
                     buffer.data = bufferJson["data"].get<std::vector<float>>();
@@ -355,6 +356,9 @@ std::string ShaderProject::generateManifestJson() const {
             bufferJson["file"] = buffer.file;
         } else {
             bufferJson["data"] = buffer.data;
+        }
+        if (buffer.striped) {
+            bufferJson["striped"] = true;
         }
         j["buffers"].push_back(bufferJson);
     }

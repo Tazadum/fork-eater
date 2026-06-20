@@ -1051,14 +1051,56 @@ void ShaderManager::updateBuffers(const std::vector<ShaderBuffer>& buffers) {
             internal.dataType = buffer.dataType;
             internal.lastData = buffer.data;
 
+            std::vector<float> unstripedData = buffer.data;
+            if (buffer.striped) {
+                int components = 1;
+                if (buffer.dataType == "vec2") components = 2;
+                else if (buffer.dataType == "vec3") components = 3;
+                else if (buffer.dataType == "vec4") components = 4;
+
+                size_t numElements = buffer.data.size() / components;
+                if (numElements > 0) {
+                    unstripedData.resize(buffer.data.size());
+                    for (size_t i = 0; i < numElements; ++i) {
+                        for (int c = 0; c < components; ++c) {
+                            unstripedData[i * components + c] = buffer.data[c * numElements + i];
+                        }
+                    }
+                }
+            }
+
             if (buffer.type == "ubo") {
+                // Pad data for std140 layout where array elements are aligned to 16-byte boundaries (4 floats stride)
+                std::vector<float> paddedData;
+                int components = 1;
+                if (buffer.dataType == "vec2") components = 2;
+                else if (buffer.dataType == "vec3") components = 3;
+                else if (buffer.dataType == "vec4") components = 4;
+
+                size_t numElements = unstripedData.size() / components;
+                paddedData.reserve(numElements * 4);
+
+                for (size_t i = 0; i < numElements; ++i) {
+                    for (int c = 0; c < components; ++c) {
+                        size_t idx = i * components + c;
+                        if (idx < unstripedData.size()) {
+                            paddedData.push_back(unstripedData[idx]);
+                        } else {
+                            paddedData.push_back(0.0f);
+                        }
+                    }
+                    for (int c = components; c < 4; ++c) {
+                        paddedData.push_back(0.0f);
+                    }
+                }
+
                 if (glCreateBuffers && glNamedBufferData) {
                     glCreateBuffers(1, &internal.tbo);
-                    glNamedBufferData(internal.tbo, buffer.data.size() * sizeof(float), buffer.data.data(), GL_STATIC_DRAW);
+                    glNamedBufferData(internal.tbo, paddedData.size() * sizeof(float), paddedData.data(), GL_STATIC_DRAW);
                 } else {
                     glGenBuffers(1, &internal.tbo);
                     glBindBuffer(GL_UNIFORM_BUFFER, internal.tbo);
-                    glBufferData(GL_UNIFORM_BUFFER, buffer.data.size() * sizeof(float), buffer.data.data(), GL_STATIC_DRAW);
+                    glBufferData(GL_UNIFORM_BUFFER, paddedData.size() * sizeof(float), paddedData.data(), GL_STATIC_DRAW);
                     glBindBuffer(GL_UNIFORM_BUFFER, 0);
                 }
                 internal.texture = 0;
@@ -1066,7 +1108,7 @@ void ShaderManager::updateBuffers(const std::vector<ShaderBuffer>& buffers) {
                 // samplerBuffer
                 glGenBuffers(1, &internal.tbo);
                 glBindBuffer(GL_TEXTURE_BUFFER, internal.tbo);
-                glBufferData(GL_TEXTURE_BUFFER, buffer.data.size() * sizeof(float), buffer.data.data(), GL_STATIC_DRAW);
+                glBufferData(GL_TEXTURE_BUFFER, unstripedData.size() * sizeof(float), unstripedData.data(), GL_STATIC_DRAW);
 
                 glGenTextures(1, &internal.texture);
                 glBindTexture(GL_TEXTURE_BUFFER, internal.texture);

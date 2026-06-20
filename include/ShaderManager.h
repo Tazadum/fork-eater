@@ -34,6 +34,7 @@ struct ShaderBuffer {
     std::string dataType = "float"; // "float", "vec2", "vec3", "vec4"
     std::vector<float> data; // For in-line data
     std::string file; // For external CSV/data files
+    bool striped = false; // Whether the data is striped (planar/SoA)
 };
 
 class ShaderManager {

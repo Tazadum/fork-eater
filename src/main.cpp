@@ -645,6 +645,29 @@ int main(int argc, char* argv[]) {
             }
         }
         header << "\n};\n\n";
+
+        if (selectedBuffer->striped) {
+            std::string funcName = "unpack_" + varName;
+            header << "static inline const float* " << funcName << "() {\n";
+            header << "    static float dest[" << macroName << "_LENGTH * 4];\n";
+            header << "    for (int i = 0; i < " << macroName << "_LENGTH; ++i) {\n";
+            for (int c = 0; c < 4; ++c) {
+                header << "        dest[i * 4 + " << c << "] = ";
+                if (c < components) {
+                    if (components == 1) {
+                        header << varName << "[i];\n";
+                    } else {
+                        header << varName << "[" << c << " * " << macroName << "_LENGTH + i];\n";
+                    }
+                } else {
+                    header << "0.0f;\n";
+                }
+            }
+            header << "    }\n";
+            header << "    return dest;\n";
+            header << "}\n\n";
+        }
+
         header << "#endif // " << guardName << "\n";
 
         std::ofstream out(outputPath);

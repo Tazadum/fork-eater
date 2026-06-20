@@ -1,7 +1,8 @@
 #version 330 core
 
 #pragma group("Colors")
-#pragma slider(BRIGHTNESS, 0.1, 1.0, 0.5, "Brightness")
+#pragma range(BRIGHTNESS, 0.1, 1.0, 0.5, "Brightness")
+uniform float BRIGHTNESS;
 #pragma endgroup()
 
 out vec4 FragColor;
