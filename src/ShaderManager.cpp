@@ -89,8 +89,18 @@ std::shared_ptr<ShaderManager::ShaderProgram> ShaderManager::loadShader(
     shader->fragmentPath = fragmentPath;
     shader->isValid = false;
 
-    auto vertexResult = m_preprocessor->preprocess(vertexPath, scaleMode);
-    auto fragmentResult = m_preprocessor->preprocess(fragmentPath, scaleMode);
+    std::vector<ShaderPreprocessor::BufferInfo> preprocessBuffers;
+    for (const auto& pair : m_buffers) {
+        ShaderPreprocessor::BufferInfo info;
+        info.name = pair.first;
+        info.type = pair.second.bufferType;
+        info.dataType = pair.second.dataType;
+        info.size = pair.second.size;
+        preprocessBuffers.push_back(info);
+    }
+
+    auto vertexResult = m_preprocessor->preprocess(vertexPath, scaleMode, preprocessBuffers);
+    auto fragmentResult = m_preprocessor->preprocess(fragmentPath, scaleMode, preprocessBuffers);
 
     shader->preprocessedVertexSource = vertexResult.source;
     shader->preprocessedFragmentSource = fragmentResult.source;
@@ -767,6 +777,22 @@ void ShaderManager::renderToFramebuffer(const std::string& name, int width, int 
 
     auto shader = getShader(name);
     if (shader) {
+        // Bind UBOs
+        int uboBindingPoint = 0;
+        for (const auto& pair : m_buffers) {
+            if (pair.second.bufferType == "ubo") {
+                GLuint blockIndex = glGetUniformBlockIndex(shader->programId, pair.first.c_str());
+                if (blockIndex == GL_INVALID_INDEX) {
+                    blockIndex = glGetUniformBlockIndex(shader->programId, (pair.first + "_block").c_str());
+                }
+                if (blockIndex != GL_INVALID_INDEX) {
+                    glUniformBlockBinding(shader->programId, blockIndex, uboBindingPoint);
+                    glBindBufferBase(GL_UNIFORM_BUFFER, uboBindingPoint, pair.second.tbo);
+                    uboBindingPoint++;
+                }
+            }
+        }
+
         int textureUnitOffset = 10; // Start TBOs from unit 10 to avoid overlap with multipass inputs
         for (const auto& uniform : shader->uniforms) {
             GLint location = glGetUniformLocation(shader->programId, uniform.name.c_str());
@@ -774,6 +800,9 @@ void ShaderManager::renderToFramebuffer(const std::string& name, int width, int 
                 // Check if this uniform is backed by a data buffer
                 auto bufIt = m_buffers.find(uniform.name);
                 if (bufIt != m_buffers.end()) {
+                    if (bufIt->second.bufferType == "ubo") {
+                        continue;
+                    }
                     if (uniform.type == GL_SAMPLER_BUFFER) {
                         glActiveTexture(GL_TEXTURE0 + textureUnitOffset);
                         glBindTexture(GL_TEXTURE_BUFFER, bufIt->second.texture);
@@ -782,9 +811,9 @@ void ShaderManager::renderToFramebuffer(const std::string& name, int width, int 
                     } else {
                         // Handle uniform array if the name matches a buffer
                         int components = 1;
-                        if (bufIt->second.type == "vec2") components = 2;
-                        else if (bufIt->second.type == "vec3") components = 3;
-                        else if (bufIt->second.type == "vec4") components = 4;
+                        if (bufIt->second.dataType == "vec2") components = 2;
+                        else if (bufIt->second.dataType == "vec3") components = 3;
+                        else if (bufIt->second.dataType == "vec4") components = 4;
                         
                         int count = static_cast<int>(bufIt->second.size / components);
                         if (components == 1) glUniform1fv(location, count, bufIt->second.lastData.data());
@@ -1002,35 +1031,57 @@ void ShaderManager::updateBuffers(const std::vector<ShaderBuffer>& buffers) {
         auto it = m_buffers.find(buffer.name);
         if (it == m_buffers.end()) {
             needsUpdate = true;
-        } else if (it->second.size != buffer.data.size() || it->second.type != buffer.type || it->second.lastData != buffer.data) {
+        } else if (it->second.size != buffer.data.size() || 
+                   it->second.bufferType != buffer.type || 
+                   it->second.dataType != buffer.dataType || 
+                   it->second.lastData != buffer.data) {
             needsUpdate = true;
-            glDeleteTextures(1, &it->second.texture);
-            glDeleteBuffers(1, &it->second.tbo);
+            if (it->second.texture != 0) {
+                glDeleteTextures(1, &it->second.texture);
+            }
+            if (it->second.tbo != 0) {
+                glDeleteBuffers(1, &it->second.tbo);
+            }
         }
 
         if (needsUpdate) {
             InternalBuffer internal;
             internal.size = buffer.data.size();
-            internal.type = buffer.type;
+            internal.bufferType = buffer.type;
+            internal.dataType = buffer.dataType;
             internal.lastData = buffer.data;
 
-            glGenBuffers(1, &internal.tbo);
-            glBindBuffer(GL_TEXTURE_BUFFER, internal.tbo);
-            glBufferData(GL_TEXTURE_BUFFER, buffer.data.size() * sizeof(float), buffer.data.data(), GL_STATIC_DRAW);
+            if (buffer.type == "ubo") {
+                if (glCreateBuffers && glNamedBufferData) {
+                    glCreateBuffers(1, &internal.tbo);
+                    glNamedBufferData(internal.tbo, buffer.data.size() * sizeof(float), buffer.data.data(), GL_STATIC_DRAW);
+                } else {
+                    glGenBuffers(1, &internal.tbo);
+                    glBindBuffer(GL_UNIFORM_BUFFER, internal.tbo);
+                    glBufferData(GL_UNIFORM_BUFFER, buffer.data.size() * sizeof(float), buffer.data.data(), GL_STATIC_DRAW);
+                    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+                }
+                internal.texture = 0;
+            } else {
+                // samplerBuffer
+                glGenBuffers(1, &internal.tbo);
+                glBindBuffer(GL_TEXTURE_BUFFER, internal.tbo);
+                glBufferData(GL_TEXTURE_BUFFER, buffer.data.size() * sizeof(float), buffer.data.data(), GL_STATIC_DRAW);
 
-            glGenTextures(1, &internal.texture);
-            glBindTexture(GL_TEXTURE_BUFFER, internal.texture);
+                glGenTextures(1, &internal.texture);
+                glBindTexture(GL_TEXTURE_BUFFER, internal.texture);
 
-            GLenum internalFormat = GL_R32F;
-            if (buffer.type == "vec2") internalFormat = GL_RG32F;
-            else if (buffer.type == "vec3") internalFormat = GL_RGB32F;
-            else if (buffer.type == "vec4") internalFormat = GL_RGBA32F;
+                GLenum internalFormat = GL_R32F;
+                if (buffer.dataType == "vec2") internalFormat = GL_RG32F;
+                else if (buffer.dataType == "vec3") internalFormat = GL_RGB32F;
+                else if (buffer.dataType == "vec4") internalFormat = GL_RGBA32F;
 
-            glTexBuffer(GL_TEXTURE_BUFFER, internalFormat, internal.tbo);
-            glBindBuffer(GL_TEXTURE_BUFFER, 0);
+                glTexBuffer(GL_TEXTURE_BUFFER, internalFormat, internal.tbo);
+                glBindBuffer(GL_TEXTURE_BUFFER, 0);
+            }
 
             m_buffers[buffer.name] = internal;
-            LOG_DEBUG("Updated buffer '{}' ({} values, type {})", buffer.name, buffer.data.size(), buffer.type);
+            LOG_DEBUG("Updated buffer '{}' ({} values, type {}, dataType {})", buffer.name, buffer.data.size(), buffer.type, buffer.dataType);
         }
     }
     
@@ -1044,8 +1095,12 @@ void ShaderManager::updateBuffers(const std::vector<ShaderBuffer>& buffers) {
             }
         }
         if (!found) {
-            glDeleteTextures(1, &it->second.texture);
-            glDeleteBuffers(1, &it->second.tbo);
+            if (it->second.texture != 0) {
+                glDeleteTextures(1, &it->second.texture);
+            }
+            if (it->second.tbo != 0) {
+                glDeleteBuffers(1, &it->second.tbo);
+            }
             it = m_buffers.erase(it);
         } else {
             ++it;

@@ -366,6 +366,8 @@ int main(int argc, char* argv[]) {
     bool preprocessMode = false;
     std::string preprocessInputPath;
     std::string outputPath;
+    bool exportBufferMode = false;
+    std::string exportBufferName;
     int xres = 0;
     int yres = 0;
     std::string passName;
@@ -481,8 +483,17 @@ int main(int argc, char* argv[]) {
                 i++;
             }
         }
+        else if (arg == "--export-buffer-header") {
+            exportBufferMode = true;
+            if (i + 1 < argc) {
+                exportBufferName = argv[i + 1];
+                i++;
+            } else {
+                LOG_ERROR("Missing buffer name for --export-buffer-header");
+                return 1;
+            }
+        }
         else if (arg == "-o" || arg == "--output") {
-            preprocessMode = true;
             if (i + 1 < argc) {
                 outputPath = argv[i + 1];
                 i++;
@@ -560,9 +571,93 @@ int main(int argc, char* argv[]) {
         }
     }
     
+    if (!outputPath.empty() && !exportBufferMode) {
+        preprocessMode = true;
+    }
+
     // Initialize logger early so it can be used throughout
     Logger::getInstance().initialize(debugMode);
     LOG_INFO("Fork Eater - Compiled on {} at {}", __DATE__, __TIME__);
+
+    if (exportBufferMode) {
+        if (shaderProjectPath.empty()) {
+            shaderProjectPath = ".";
+        }
+        ShaderProject proj;
+        LOG_INFO("Loading project from: {}", shaderProjectPath);
+        if (!proj.loadFromDirectory(shaderProjectPath)) {
+            LOG_ERROR("Failed to load project from: {}", shaderProjectPath);
+            return 1;
+        }
+
+        if (outputPath.empty()) {
+            LOG_ERROR("Output path must be specified via -o/--output when using --export-buffer-header");
+            return 1;
+        }
+
+        // Find buffer
+        const ShaderBuffer* selectedBuffer = nullptr;
+        for (const auto& buffer : proj.getManifest().buffers) {
+            if (buffer.name == exportBufferName) {
+                selectedBuffer = &buffer;
+                break;
+            }
+        }
+
+        if (!selectedBuffer) {
+            LOG_ERROR("Buffer '{}' not found in project", exportBufferName);
+            return 1;
+        }
+
+        // Generate C-header content
+        std::string cleanName = exportBufferName;
+        if (cleanName.rfind("u_", 0) == 0) {
+            cleanName = cleanName.substr(2);
+        } else if (cleanName.rfind("u", 0) == 0 && cleanName.size() > 1 && std::isupper(cleanName[1])) {
+            cleanName = cleanName.substr(1);
+            cleanName[0] = std::tolower(cleanName[0]);
+        }
+        std::string varName = "buffer_" + cleanName;
+        std::string macroName = varName;
+        std::transform(macroName.begin(), macroName.end(), macroName.begin(), ::toupper);
+        std::string guardName = macroName + "_H";
+
+        int components = 1;
+        if (selectedBuffer->dataType == "vec2") components = 2;
+        else if (selectedBuffer->dataType == "vec3") components = 3;
+        else if (selectedBuffer->dataType == "vec4") components = 4;
+
+        size_t length = selectedBuffer->data.size() / components;
+
+        std::stringstream header;
+        header << "#ifndef " << guardName << "\n";
+        header << "#define " << guardName << "\n\n";
+        header << "#define " << macroName << "_LENGTH " << length << "\n\n";
+        header << "static const float " << varName << "[" << selectedBuffer->data.size() << "] = {\n    ";
+
+        for (size_t idx = 0; idx < selectedBuffer->data.size(); ++idx) {
+            header << selectedBuffer->data[idx] << "f";
+            if (idx + 1 < selectedBuffer->data.size()) {
+                header << ", ";
+                if ((idx + 1) % 8 == 0) {
+                    header << "\n    ";
+                }
+            }
+        }
+        header << "\n};\n\n";
+        header << "#endif // " << guardName << "\n";
+
+        std::ofstream out(outputPath);
+        if (!out.is_open()) {
+            LOG_ERROR("Failed to write buffer header to: {}", outputPath);
+            return 1;
+        }
+        out << header.str();
+        out.close();
+
+        LOG_SUCCESS("Successfully exported buffer '{}' to C-header: {}", exportBufferName, outputPath);
+        return 0;
+    }
 
     if (preprocessMode) {
         if (preprocessInputPath.empty()) {
@@ -720,12 +815,25 @@ int main(int argc, char* argv[]) {
 
         LOG_INFO("Preprocessing shader: {}", shaderToPreprocess);
         
+        std::vector<ShaderPreprocessor::BufferInfo> preprocessBuffers;
+        if (isProject) {
+            for (const auto& buf : proj.getManifest().buffers) {
+                ShaderPreprocessor::BufferInfo info;
+                info.name = buf.name;
+                info.type = buf.type;
+                info.dataType = buf.dataType;
+                info.size = buf.data.size();
+                preprocessBuffers.push_back(info);
+            }
+        }
+
         ShaderPreprocessor preprocessor;
         std::string baked = preprocessor.preprocessAndBake(
             shaderToPreprocess,
             uniformValues,
             switchStates,
             sliderStates,
+            preprocessBuffers,
             xres,
             yres
         );
@@ -883,7 +991,8 @@ void printUsage(const char* programName) {
     LOG_INFO("  --render-scale-mode MODE    Set render scale mode (chunk, resolution)");
     LOG_INFO("  --render-scale FACTOR       Set initial render scale factor (0.0 - 1.0)");
     LOG_INFO("  --preprocess, -p PATH       Preprocess shader file or project directory");
-    LOG_INFO("  -o, --output PATH           Output baked/preprocessed shader to path");
+    LOG_INFO("  --export-buffer-header NAME Export project buffer values to a C-header file");
+    LOG_INFO("  -o, --output PATH           Output baked/preprocessed shader or exported buffer header to path");
     LOG_INFO("  -w, --width VAL             Width (XRES) for resolution substitution");
     LOG_INFO("  -H, --height VAL            Height (YRES) for resolution substitution");
     LOG_INFO("  --resolution W H            Width and height for resolution substitution");

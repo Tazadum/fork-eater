@@ -256,7 +256,14 @@ bool ShaderProject::parseManifestJson(const std::string& jsonContent) {
             for (const auto& bufferJson : j["buffers"]) {
                 ShaderBuffer buffer;
                 buffer.name = bufferJson.value("name", "");
-                buffer.type = bufferJson.value("type", "float");
+                std::string typeVal = bufferJson.value("type", "samplerBuffer");
+                if (typeVal == "float" || typeVal == "vec2" || typeVal == "vec3" || typeVal == "vec4") {
+                    buffer.dataType = typeVal;
+                    buffer.type = "samplerBuffer";
+                } else {
+                    buffer.type = typeVal;
+                    buffer.dataType = bufferJson.value("dataType", "float");
+                }
                 buffer.file = bufferJson.value("file", "");
                 
                 if (bufferJson.contains("data") && bufferJson["data"].is_array()) {
@@ -343,6 +350,7 @@ std::string ShaderProject::generateManifestJson() const {
         json bufferJson;
         bufferJson["name"] = buffer.name;
         bufferJson["type"] = buffer.type;
+        bufferJson["dataType"] = buffer.dataType;
         if (!buffer.file.empty()) {
             bufferJson["file"] = buffer.file;
         } else {

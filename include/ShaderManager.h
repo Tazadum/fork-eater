@@ -30,7 +30,8 @@ struct ShaderUniform {
 
 struct ShaderBuffer {
     std::string name;
-    std::string type; // "float", "vec2", "vec3", "vec4"
+    std::string type = "samplerBuffer"; // "samplerBuffer" or "ubo"
+    std::string dataType = "float"; // "float", "vec2", "vec3", "vec4"
     std::vector<float> data; // For in-line data
     std::string file; // For external CSV/data files
 };
@@ -135,7 +136,8 @@ private:
         GLuint tbo;
         GLuint texture;
         size_t size;
-        std::string type;
+        std::string bufferType; // "samplerBuffer" or "ubo"
+        std::string dataType; // "float", "vec2", "vec3", "vec4"
         std::vector<float> lastData;
     };
 

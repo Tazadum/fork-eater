@@ -53,6 +53,13 @@ public:
         std::string groupName;
     };
 
+    struct BufferInfo {
+        std::string name;
+        std::string type;      // "samplerBuffer" or "ubo"
+        std::string dataType;  // "float", "vec2", "vec3", "vec4"
+        size_t size = 0;       // Total float count
+    };
+
     struct PreprocessResult {
         std::string source;
         std::vector<std::string> includedFiles;
@@ -70,13 +77,16 @@ public:
     ShaderPreprocessor();
 
     // Preprocesses a shader file, resolving #pragma include directives.
-    PreprocessResult preprocess(const std::string& filePath, RenderScaleMode scaleMode = RenderScaleMode::Resolution);
+    PreprocessResult preprocess(const std::string& filePath, 
+                               RenderScaleMode scaleMode = RenderScaleMode::Resolution,
+                               const std::vector<BufferInfo>& buffers = {});
 
     // Preprocesses a shader file and bakes uniform values, resolution, and defines.
     std::string preprocessAndBake(const std::string& filePath,
                                   const std::map<std::string, std::vector<float>>& uniforms,
                                   const std::map<std::string, bool>& switches,
                                   const std::map<std::string, int>& sliders,
+                                  const std::vector<BufferInfo>& buffers,
                                   int xres, int yres,
                                   RenderScaleMode scaleMode = RenderScaleMode::Resolution);
 

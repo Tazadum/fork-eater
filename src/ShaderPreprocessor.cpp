@@ -27,7 +27,7 @@ ShaderPreprocessor::ShaderPreprocessor() {
     EmbeddedLibraries::initialize();
 }
 
-ShaderPreprocessor::PreprocessResult ShaderPreprocessor::preprocess(const std::string& filePath, RenderScaleMode scaleMode) {
+ShaderPreprocessor::PreprocessResult ShaderPreprocessor::preprocess(const std::string& filePath, RenderScaleMode scaleMode, const std::vector<BufferInfo>& buffers) {
     PreprocessResult result;
     std::vector<std::string> includeStack;
     std::set<std::string> uniqueIncludedFiles;
@@ -37,6 +37,58 @@ ShaderPreprocessor::PreprocessResult ShaderPreprocessor::preprocess(const std::s
 
     for (const auto& file : uniqueIncludedFiles) {
         result.includedFiles.push_back(file);
+    }
+
+    // Inject buffer length defines after #version
+    std::string bufferDefines;
+    for (const auto& buf : buffers) {
+        int components = 1;
+        if (buf.dataType == "vec2") components = 2;
+        else if (buf.dataType == "vec3") components = 3;
+        else if (buf.dataType == "vec4") components = 4;
+        
+        size_t length = buf.size / components;
+        std::string macroName = buf.name;
+        std::transform(macroName.begin(), macroName.end(), macroName.begin(), ::toupper);
+        bufferDefines += "#define " + macroName + "_LENGTH " + std::to_string(length) + "\n";
+    }
+
+    if (!bufferDefines.empty()) {
+        size_t versionPos = result.source.find("#version");
+        int insertionLine = 1;
+        int insertedLines = std::count(bufferDefines.begin(), bufferDefines.end(), '\n');
+        
+        if (versionPos != std::string::npos) {
+            size_t eolPos = result.source.find('\n', versionPos);
+            if (eolPos != std::string::npos) {
+                result.source.insert(eolPos + 1, bufferDefines);
+                insertionLine = 2;
+            }
+        } else {
+            result.source.insert(0, bufferDefines);
+            insertionLine = 1;
+        }
+
+        // Shift metadata
+        auto shiftMetadata = [&](int fromLine, int delta, const std::string& virtualPath, int startFileLine) {
+            for (auto& range : result.uniformRanges) {
+                if (range.line >= fromLine) range.line += delta;
+            }
+            for (auto& change : result.groupChanges) {
+                if (change.line >= fromLine) change.line += delta;
+            }
+            for (auto& mapping : result.lineMappings) {
+                if (mapping.preprocessedLine >= fromLine) mapping.preprocessedLine += delta;
+            }
+            for (int i = 0; i < delta; ++i) {
+                result.lineMappings.push_back({fromLine + i, virtualPath, startFileLine + i});
+            }
+            std::sort(result.lineMappings.begin(), result.lineMappings.end(), [](const LineMapping& a, const LineMapping& b) {
+                return a.preprocessedLine < b.preprocessedLine;
+            });
+        };
+        
+        shiftMetadata(insertionLine, insertedLines, "<internal:buffer_defines>", 1);
     }
     
     // Conditional Chunk Logic Injection
@@ -445,10 +497,11 @@ std::string ShaderPreprocessor::preprocessAndBake(const std::string& filePath,
                                                   const std::map<std::string, std::vector<float>>& uniforms,
                                                   const std::map<std::string, bool>& switches,
                                                   const std::map<std::string, int>& sliders,
+                                                  const std::vector<BufferInfo>& buffers,
                                                   int xres, int yres,
                                                   RenderScaleMode scaleMode) {
     // 1. Run the standard preprocessor
-    PreprocessResult result = preprocess(filePath, scaleMode);
+    PreprocessResult result = preprocess(filePath, scaleMode, buffers);
     
     if (result.source.empty() || result.source.find("#error") != std::string::npos) {
         return result.source;
@@ -518,9 +571,17 @@ std::string ShaderPreprocessor::preprocessAndBake(const std::string& filePath,
         std::string typeStr = match[1].str();
         std::string nameStr = match[2].str();
         
+        bool isBuffer = false;
+        for (const auto& buf : buffers) {
+            if (buf.name == nameStr) {
+                isBuffer = true;
+                break;
+            }
+        }
+        
         if (nameStr == "iTime" || nameStr == "u_time") {
             bakedSource.append(match.str());
-        } else if (typeStr == "samplerBuffer") {
+        } else if (typeStr == "samplerBuffer" || isBuffer) {
             bakedSource.append(match.str());
         } else if (nameStr == "iResolution" || nameStr == "u_resolution") {
             if (typeStr == "vec3") {
