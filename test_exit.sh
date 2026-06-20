@@ -48,7 +48,6 @@ timeout 5s ./build/fork-eater project/test > /dev/null 2> error.log &
 APP_PID=$!
 sleep 1
 
-# Check if process is running
 if kill -0 $APP_PID 2>/dev/null; then
     echo "   ✅ Application starts successfully"
     # Terminate the process
@@ -60,6 +59,27 @@ else
     exit 1
 fi
 
+# Test 5: Preprocessor mode
+echo "5️⃣  Testing preprocessor mode..."
+TEST_OUTPUT="/tmp/preprocessed-test-out.glsl"
+rm -f "$TEST_OUTPUT"
+./build/fork-eater --preprocess test_project -o "$TEST_OUTPUT" -w 1920 -H 1080 > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "   ❌ Preprocessor mode exited with failure code"
+    exit 1
+fi
+if [ ! -f "$TEST_OUTPUT" ]; then
+    echo "   ❌ Preprocessor output file was not created"
+    exit 1
+fi
+if grep -q "#define XRES 1920" "$TEST_OUTPUT" && grep -q "#define YRES 1080" "$TEST_OUTPUT" && grep -q "const vec3 iResolution = vec3(XRES, YRES, 1\.0);" "$TEST_OUTPUT"; then
+    echo "   ✅ Preprocessor mode works successfully"
+else
+    echo "   ❌ Preprocessor output content substitution failed"
+    exit 1
+fi
+rm -f "$TEST_OUTPUT"
+
 echo "============================================="
 echo "🎉 All exit functionality tests passed!"
 echo ""
@@ -68,5 +88,6 @@ echo "  • Help command: ✅ Works"
 echo "  • Test mode: ✅ Works (both default and custom exit codes)"
 echo "  • Application startup: ✅ Works"
 echo "  • Application termination: ✅ Works"
+echo "  • Preprocessor mode: ✅ Works"
 echo ""
 echo "The Fork Eater shader editor is ready for use!"

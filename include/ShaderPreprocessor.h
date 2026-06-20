@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <map>
 #include <functional>
 #include "RenderScaleMode.h"
 
@@ -70,6 +71,14 @@ public:
 
     // Preprocesses a shader file, resolving #pragma include directives.
     PreprocessResult preprocess(const std::string& filePath, RenderScaleMode scaleMode = RenderScaleMode::Resolution);
+
+    // Preprocesses a shader file and bakes uniform values, resolution, and defines.
+    std::string preprocessAndBake(const std::string& filePath,
+                                  const std::map<std::string, std::vector<float>>& uniforms,
+                                  const std::map<std::string, bool>& switches,
+                                  const std::map<std::string, int>& sliders,
+                                  int xres, int yres,
+                                  RenderScaleMode scaleMode = RenderScaleMode::Resolution);
 
 private:
     // Recursive helper for preprocessing

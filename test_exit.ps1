@@ -61,5 +61,25 @@ if (-not $proc.HasExited) {
     exit 1
 }
 
+Write-Host "5. Testing preprocessor mode..."
+$testOutput = Join-Path $env:TEMP "preprocessed-test-out.glsl"
+if (Test-Path $testOutput) { Remove-Item $testOutput }
+$exitPrep = Invoke-ForkEater @("--preprocess", "test_project", "-o", $testOutput, "-w", "1920", "-H", "1080")
+if ($exitPrep -ne 0) {
+    Write-Host "   Preprocessor mode exited with failure code ($exitPrep)"
+    exit 1
+}
+if (-not (Test-Path $testOutput)) {
+    Write-Host "   Preprocessor output file was not created"
+    exit 1
+}
+$content = Get-Content $testOutput -Raw
+if (-not ($content -match "#define XRES 1920" -and $content -match "#define YRES 1080" -and $content -match "const vec3 iResolution = vec3\(XRES, YRES, 1\.0\);")) {
+    Write-Host "   Preprocessor output content substitution failed"
+    exit 1
+}
+Remove-Item $testOutput
+Write-Host "   Preprocessor mode works successfully"
+
 Write-Host "============================================="
 Write-Host "All exit functionality tests passed!"

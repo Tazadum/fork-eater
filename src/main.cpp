@@ -23,6 +23,11 @@
 #include "GeneratedShaderLibraries.h"
 #include <filesystem>
 #include "RenderScaleMode.h"
+#include "ShaderPreprocessor.h"
+#include "json.hpp"
+#include <fstream>
+
+using json = nlohmann::json;
 
 // Constants
 const int WINDOW_WIDTH = 1280;
@@ -357,6 +362,14 @@ int main(int argc, char* argv[]) {
     std::string shaderProjectPath;
     std::string templateName = "simple";
     
+    // Preprocessor options
+    bool preprocessMode = false;
+    std::string preprocessInputPath;
+    std::string outputPath;
+    int xres = 0;
+    int yres = 0;
+    std::string passName;
+
     // DPI scaling options
     bool overrideScaling = false;
     float customScale = 1.0f;
@@ -461,6 +474,75 @@ int main(int argc, char* argv[]) {
             dumpOutputPath = argv[i + 2];
             i += 2;
         }
+        else if (arg == "--preprocess" || arg == "-p") {
+            preprocessMode = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                preprocessInputPath = argv[i + 1];
+                i++;
+            }
+        }
+        else if (arg == "-o" || arg == "--output") {
+            preprocessMode = true;
+            if (i + 1 < argc) {
+                outputPath = argv[i + 1];
+                i++;
+            } else {
+                LOG_ERROR("Missing output file path for -o/--output");
+                return 1;
+            }
+        }
+        else if (arg == "-w" || arg == "--width") {
+            if (i + 1 < argc) {
+                try {
+                    xres = std::stoi(argv[i + 1]);
+                    i++;
+                } catch (const std::exception&) {
+                    LOG_ERROR("Invalid width: {}", argv[i + 1]);
+                    return 1;
+                }
+            } else {
+                LOG_ERROR("Missing width value");
+                return 1;
+            }
+        }
+        else if (arg == "-H" || arg == "--height") {
+            if (i + 1 < argc) {
+                try {
+                    yres = std::stoi(argv[i + 1]);
+                    i++;
+                } catch (const std::exception&) {
+                    LOG_ERROR("Invalid height: {}", argv[i + 1]);
+                    return 1;
+                }
+            } else {
+                LOG_ERROR("Missing height value");
+                return 1;
+            }
+        }
+        else if (arg == "--resolution") {
+            if (i + 2 < argc) {
+                try {
+                    xres = std::stoi(argv[i + 1]);
+                    yres = std::stoi(argv[i + 2]);
+                    i += 2;
+                } catch (const std::exception&) {
+                    LOG_ERROR("Invalid resolution values: {} {}", argv[i + 1], argv[i + 2]);
+                    return 1;
+                }
+            } else {
+                LOG_ERROR("Missing values for --resolution (expected width and height)");
+                return 1;
+            }
+        }
+        else if (arg == "--pass") {
+            if (i + 1 < argc) {
+                passName = argv[i + 1];
+                i++;
+            } else {
+                LOG_ERROR("Missing pass name for --pass");
+                return 1;
+            }
+        }
         else if (!arg.empty() && arg[0] != '-') {
             // This is a shader project path
             if (shaderProjectPath.empty()) {
@@ -481,6 +563,189 @@ int main(int argc, char* argv[]) {
     // Initialize logger early so it can be used throughout
     Logger::getInstance().initialize(debugMode);
     LOG_INFO("Fork Eater - Compiled on {} at {}", __DATE__, __TIME__);
+
+    if (preprocessMode) {
+        if (preprocessInputPath.empty()) {
+            if (!shaderProjectPath.empty()) {
+                preprocessInputPath = shaderProjectPath;
+            } else {
+                preprocessInputPath = ".";
+            }
+        }
+        
+        if (xres <= 0 || yres <= 0) {
+            LOG_ERROR("Error: Resolution width and height must be specified when using preprocessor mode (e.g. -w 1920 -h 1080 or --resolution 1920 1080)");
+            return 1;
+        }
+        if (outputPath.empty()) {
+            LOG_ERROR("Error: Output file path must be specified via -o or --output");
+            return 1;
+        }
+
+        ShaderProject proj;
+        bool isProject = false;
+        std::string shaderToPreprocess = preprocessInputPath;
+        
+        // Check if the input path is a directory
+        if (std::filesystem::is_directory(preprocessInputPath)) {
+            isProject = true;
+        } else {
+            // If it's a file, check if there's a 4k-eater.project in its parent directories to load as a project
+            std::filesystem::path p(preprocessInputPath);
+            std::filesystem::path current = p.parent_path();
+            while (!current.empty() && current != current.root_path()) {
+                if (std::filesystem::exists(current / SHADER_PROJECT_MANIFEST_FILENAME)) {
+                    preprocessInputPath = current.string();
+                    isProject = true;
+                    break;
+                }
+                current = current.parent_path();
+            }
+        }
+
+        std::map<std::string, std::vector<float>> uniformValues;
+        std::map<std::string, bool> switchStates;
+        std::map<std::string, int> sliderStates;
+        
+        if (isProject) {
+            LOG_INFO("Loading project from: {}", preprocessInputPath);
+            if (!proj.loadFromDirectory(preprocessInputPath)) {
+                LOG_ERROR("Failed to load project from: {}", preprocessInputPath);
+                return 1;
+            }
+            
+            // Find which shader pass to use
+            const auto& passes = proj.getPasses();
+            if (passes.empty()) {
+                LOG_ERROR("Project has no shader passes");
+                return 1;
+            }
+            
+            const ShaderPass* selectedPass = nullptr;
+            if (!passName.empty()) {
+                for (const auto& pass : passes) {
+                    if (pass.name == passName) {
+                        selectedPass = &pass;
+                        break;
+                    }
+                }
+                if (!selectedPass) {
+                    LOG_ERROR("Pass '{}' not found in project", passName);
+                    return 1;
+                }
+            } else {
+                // Default to first enabled pass, or just first pass
+                for (const auto& pass : passes) {
+                    if (pass.enabled) {
+                        selectedPass = &pass;
+                        break;
+                    }
+                }
+                if (!selectedPass) {
+                    selectedPass = &passes[0];
+                }
+            }
+            
+            // Get the absolute fragment shader path
+            shaderToPreprocess = proj.getShaderPath(selectedPass->fragmentShader);
+            passName = selectedPass->name;
+            
+            // Load uniforms file
+            std::string uniformsPath = preprocessInputPath + "/uniforms.json";
+            if (std::filesystem::exists(uniformsPath)) {
+                std::ifstream file(uniformsPath);
+                if (file.is_open()) {
+                    try {
+                        json j = json::parse(file);
+                        if (j.contains("uniforms") && j["uniforms"].contains(passName)) {
+                            for (auto& [name, val] : j["uniforms"][passName].items()) {
+                                uniformValues[name] = val.get<std::vector<float>>();
+                            }
+                        }
+                        if (j.contains("switches")) {
+                            for (auto& [name, val] : j["switches"].items()) {
+                                switchStates[name] = val.get<bool>();
+                            }
+                        }
+                        if (j.contains("sliders")) {
+                            for (auto& [name, val] : j["sliders"].items()) {
+                                sliderStates[name] = val.get<int>();
+                            }
+                        }
+                    } catch (const std::exception& e) {
+                        LOG_WARN("Failed to parse uniforms.json: {}", e.what());
+                    }
+                }
+            }
+        } else {
+            // If it's a standalone shader file, try to locate uniforms.json in the same directory or parent
+            std::filesystem::path shaderPath(shaderToPreprocess);
+            std::filesystem::path dir = shaderPath.parent_path();
+            std::string uniformsPath;
+            if (std::filesystem::exists(dir / "uniforms.json")) {
+                uniformsPath = (dir / "uniforms.json").string();
+            } else if (std::filesystem::exists(dir.parent_path() / "uniforms.json")) {
+                uniformsPath = (dir.parent_path() / "uniforms.json").string();
+            }
+            
+            if (!uniformsPath.empty()) {
+                std::ifstream file(uniformsPath);
+                if (file.is_open()) {
+                    try {
+                        json j = json::parse(file);
+                        // For standalone file, we might not have a pass name. Let's merge all uniforms from all passes or look up directly.
+                        if (j.contains("uniforms")) {
+                            for (auto& [pass, uniforms] : j["uniforms"].items()) {
+                                for (auto& [name, val] : uniforms.items()) {
+                                    uniformValues[name] = val.get<std::vector<float>>();
+                                }
+                            }
+                        }
+                        if (j.contains("switches")) {
+                            for (auto& [name, val] : j["switches"].items()) {
+                                switchStates[name] = val.get<bool>();
+                            }
+                        }
+                        if (j.contains("sliders")) {
+                            for (auto& [name, val] : j["sliders"].items()) {
+                                sliderStates[name] = val.get<int>();
+                            }
+                        }
+                    } catch (const std::exception& e) {
+                        LOG_WARN("Failed to parse uniforms.json: {}", e.what());
+                    }
+                }
+            }
+        }
+
+        LOG_INFO("Preprocessing shader: {}", shaderToPreprocess);
+        
+        ShaderPreprocessor preprocessor;
+        std::string baked = preprocessor.preprocessAndBake(
+            shaderToPreprocess,
+            uniformValues,
+            switchStates,
+            sliderStates,
+            xres,
+            yres
+        );
+        
+        if (baked.empty() || baked.find("#error") != std::string::npos) {
+            LOG_ERROR("Preprocessing failed or contains errors.");
+        }
+        
+        std::ofstream out(outputPath);
+        if (!out.is_open()) {
+            LOG_ERROR("Failed to write to output file: {}", outputPath);
+            return 1;
+        }
+        
+        out << baked;
+        out.close();
+        
+        LOG_SUCCESS("Successfully preprocessed and baked shader to: {}", outputPath);
+        return (baked.find("#error") != std::string::npos) ? 1 : 0;
+    }
 
     if (debugMode) {
         LOG_INFO("Debug mode enabled");
@@ -617,6 +882,12 @@ void printUsage(const char* programName) {
     LOG_INFO("  --templates                 List available shader templates");
     LOG_INFO("  --render-scale-mode MODE    Set render scale mode (chunk, resolution)");
     LOG_INFO("  --render-scale FACTOR       Set initial render scale factor (0.0 - 1.0)");
+    LOG_INFO("  --preprocess, -p PATH       Preprocess shader file or project directory");
+    LOG_INFO("  -o, --output PATH           Output baked/preprocessed shader to path");
+    LOG_INFO("  -w, --width VAL             Width (XRES) for resolution substitution");
+    LOG_INFO("  -H, --height VAL            Height (YRES) for resolution substitution");
+    LOG_INFO("  --resolution W H            Width and height for resolution substitution");
+    LOG_INFO("  --pass NAME                 Pass name to preprocess (defaults to first pass)");
     LOG_INFO("  --test [exit_code]          Run in test mode (exit after one render loop)");
     LOG_INFO("  --debug, -d                 Enable debug output with colors");
     LOG_INFO("  --scale FACTOR              Set UI scale factor (e.g., 1.0, 1.5, 2.0)");

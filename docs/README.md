@@ -16,6 +16,7 @@ Below is a list of documented application features. Each file provides a detaile
 *   [Camera System](./features/camera-system.md)
 *   [Raymarching Libraries](./features/raymarching-libraries.md)
 *   [Audio Playback and Sync](./features/audio-playback.md)
+*   [Command-Line Preprocessor Mode](./features/preprocessor-cli.md)
 
 ## Templates
 

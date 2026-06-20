@@ -6,6 +6,7 @@
 #include <regex>
 #include <filesystem>
 #include <algorithm>
+#include <iomanip>
 
 // Helper function to read a file's content
 static std::string readFileContent(const std::string& filePath) {
@@ -438,4 +439,125 @@ std::string ShaderPreprocessor::preprocessSource(const std::string& source,
     }
 
     return preprocessedSource.str();
+}
+
+std::string ShaderPreprocessor::preprocessAndBake(const std::string& filePath,
+                                                  const std::map<std::string, std::vector<float>>& uniforms,
+                                                  const std::map<std::string, bool>& switches,
+                                                  const std::map<std::string, int>& sliders,
+                                                  int xres, int yres,
+                                                  RenderScaleMode scaleMode) {
+    // 1. Run the standard preprocessor
+    PreprocessResult result = preprocess(filePath, scaleMode);
+    
+    if (result.source.empty() || result.source.find("#error") != std::string::npos) {
+        return result.source;
+    }
+    
+    // 2. Insert resolution and define injections after the #version directive
+    std::string injected;
+    
+    // Inject resolution defines
+    injected += "#define XRES " + std::to_string(xres) + "\n";
+    injected += "#define YRES " + std::to_string(yres) + "\n";
+    
+    // Inject switch defines
+    for (const auto& sw : result.switchFlags) {
+        bool enabled = sw.defaultValue;
+        if (switches.find(sw.name) != switches.end()) {
+            enabled = switches.at(sw.name);
+        }
+        if (enabled) {
+            injected += "#define " + sw.name + "\n";
+        }
+    }
+    
+    // Inject slider defines
+    for (const auto& sl : result.sliders) {
+        int value = sl.defaultValue;
+        if (sliders.find(sl.name) != sliders.end()) {
+            value = sliders.at(sl.name);
+        }
+        injected += "#define " + sl.name + " " + std::to_string(value) + "\n";
+    }
+    
+    std::string finalSource = result.source;
+    size_t versionPos = finalSource.find("#version");
+    size_t insertPos = 0;
+    if (versionPos != std::string::npos) {
+        size_t eolPos = finalSource.find('\n', versionPos);
+        if (eolPos != std::string::npos) {
+            insertPos = eolPos + 1;
+        }
+    }
+    finalSource.insert(insertPos, injected);
+    
+    // Helper to format float values
+    auto formatFloat = [](float f) {
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(6) << f;
+        std::string s = ss.str();
+        s.erase(s.find_last_not_of('0') + 1, std::string::npos);
+        if (s.back() == '.') {
+            s += '0';
+        }
+        return s;
+    };
+    
+    // 3. Replace uniform declarations in the source
+    std::regex uniformRegex(R"(uniform\s+(float|vec2|vec3|vec4|samplerBuffer)\s+([a-zA-Z0-9_]+)(?:\[(\d+)\])?\s*;)");
+    std::string bakedSource;
+    auto lastPos = finalSource.cbegin();
+    auto begin = std::sregex_iterator(finalSource.cbegin(), finalSource.cend(), uniformRegex);
+    auto end = std::sregex_iterator();
+    
+    for (auto it = begin; it != end; ++it) {
+        std::smatch match = *it;
+        bakedSource.append(lastPos, finalSource.cbegin() + match.position());
+        
+        std::string typeStr = match[1].str();
+        std::string nameStr = match[2].str();
+        
+        if (nameStr == "iTime" || nameStr == "u_time") {
+            bakedSource.append(match.str());
+        } else if (typeStr == "samplerBuffer") {
+            bakedSource.append(match.str());
+        } else if (nameStr == "iResolution" || nameStr == "u_resolution") {
+            if (typeStr == "vec3") {
+                bakedSource.append("const vec3 " + nameStr + " = vec3(XRES, YRES, 1.0);");
+            } else {
+                bakedSource.append("const vec2 " + nameStr + " = vec2(XRES, YRES);");
+            }
+        } else {
+            // Find value
+            std::vector<float> val = {0.0f, 0.0f, 0.0f, 0.0f};
+            if (uniforms.find(nameStr) != uniforms.end()) {
+                val = uniforms.at(nameStr);
+            } else {
+                // Try to find default from ranges
+                for (const auto& r : result.uniformRanges) {
+                    if (r.name == nameStr && r.hasDefaultValue) {
+                        val[0] = val[1] = val[2] = val[3] = r.defaultValue;
+                        break;
+                    }
+                }
+            }
+            
+            if (typeStr == "float") {
+                bakedSource.append("const float " + nameStr + " = " + formatFloat(val[0]) + ";");
+            } else if (typeStr == "vec2") {
+                bakedSource.append("const vec2 " + nameStr + " = vec2(" + formatFloat(val[0]) + ", " + formatFloat(val[1]) + ");");
+            } else if (typeStr == "vec3") {
+                bakedSource.append("const vec3 " + nameStr + " = vec3(" + formatFloat(val[0]) + ", " + formatFloat(val[1]) + ", " + formatFloat(val[2]) + ");");
+            } else if (typeStr == "vec4") {
+                bakedSource.append("const vec4 " + nameStr + " = vec4(" + formatFloat(val[0]) + ", " + formatFloat(val[1]) + ", " + formatFloat(val[2]) + ", " + formatFloat(val[3]) + ");");
+            } else {
+                bakedSource.append(match.str());
+            }
+        }
+        lastPos = match.suffix().first;
+    }
+    bakedSource.append(lastPos, finalSource.cend());
+    
+    return bakedSource;
 }
