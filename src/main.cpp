@@ -633,11 +633,21 @@ int main(int argc, char* argv[]) {
         header << "#ifndef " << guardName << "\n";
         header << "#define " << guardName << "\n\n";
         header << "#define " << macroName << "_LENGTH " << length << "\n\n";
-        header << "static const float " << varName << "[" << selectedBuffer->data.size() << "] = {\n    ";
+        std::vector<float> exportData = selectedBuffer->data;
+        if (selectedBuffer->striped) {
+            exportData.resize(selectedBuffer->data.size());
+            for (size_t i = 0; i < length; ++i) {
+                for (int c = 0; c < components; ++c) {
+                    exportData[c * length + i] = selectedBuffer->data[i * components + c];
+                }
+            }
+        }
 
-        for (size_t idx = 0; idx < selectedBuffer->data.size(); ++idx) {
-            header << selectedBuffer->data[idx] << "f";
-            if (idx + 1 < selectedBuffer->data.size()) {
+        header << "static const float " << varName << "[" << exportData.size() << "] = {\n    ";
+
+        for (size_t idx = 0; idx < exportData.size(); ++idx) {
+            header << exportData[idx] << "f";
+            if (idx + 1 < exportData.size()) {
                 header << ", ";
                 if ((idx + 1) % 8 == 0) {
                     header << "\n    ";
