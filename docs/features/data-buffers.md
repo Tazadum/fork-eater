@@ -65,7 +65,7 @@ If a buffer has `"striped": true` in the manifest, the static array inside the g
 To bridge the gap to OpenGL UBOs at runtime, the generated header automatically provides a size-optimized, zero-dependency `static inline` helper function that reconstructs and pads the data:
 
 ```cpp
-static inline const float* unpack_buffer_corners();
+static inline const float* unpack_buffer_0();
 ```
 
 This function:
@@ -76,30 +76,31 @@ This function:
 
 #### Example Generated Header Output
 
-For a striped `vec2` buffer named `u_corners` with a length of 2 elements, the exported header will look like:
+For a striped `vec2` buffer named `u_corners` at index 0 with a length of 2 elements, the exported header will look like:
 
 ```cpp
-#ifndef BUFFER_CORNERS_H
-#define BUFFER_CORNERS_H
+#ifndef BUFFER_0_H
+#define BUFFER_0_H
 
-#define BUFFER_CORNERS_LENGTH 2
+#define BUFFER_0_LENGTH 2
+#define BUFFER_0_NAME "u_corners"
 
-static const float buffer_corners[4] = {
+static const float buffer_0[4] = {
     0.1f, 0.9f, 0.1f, 0.9f
 };
 
-static inline const float* unpack_buffer_corners() {
-    static float dest[BUFFER_CORNERS_LENGTH * 4];
-    for (int i = 0; i < BUFFER_CORNERS_LENGTH; ++i) {
-        dest[i * 4 + 0] = buffer_corners[0 * BUFFER_CORNERS_LENGTH + i];
-        dest[i * 4 + 1] = buffer_corners[1 * BUFFER_CORNERS_LENGTH + i];
+static inline const float* unpack_buffer_0() {
+    static float dest[BUFFER_0_LENGTH * 4];
+    for (int i = 0; i < BUFFER_0_LENGTH; ++i) {
+        dest[i * 4 + 0] = buffer_0[0 * BUFFER_0_LENGTH + i];
+        dest[i * 4 + 1] = buffer_0[1 * BUFFER_0_LENGTH + i];
         dest[i * 4 + 2] = 0.0f;
         dest[i * 4 + 3] = 0.0f;
     }
     return dest;
 }
 
-#endif // BUFFER_CORNERS_H
+#endif // BUFFER_0_H
 ```
 
 ---

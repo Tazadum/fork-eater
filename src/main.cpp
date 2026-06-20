@@ -611,16 +611,9 @@ int main(int argc, char* argv[]) {
         const ShaderBuffer* selectedBuffer = &proj.getManifest().buffers[bufferIndex];
 
         // Generate C-header content
-        std::string cleanName = selectedBuffer->name;
-        if (cleanName.rfind("u_", 0) == 0) {
-            cleanName = cleanName.substr(2);
-        } else if (cleanName.rfind("u", 0) == 0 && cleanName.size() > 1 && std::isupper(cleanName[1])) {
-            cleanName = cleanName.substr(1);
-            cleanName[0] = std::tolower(cleanName[0]);
-        }
-        std::string varName = "buffer_" + cleanName;
-        std::string macroName = varName;
-        std::transform(macroName.begin(), macroName.end(), macroName.begin(), ::toupper);
+        std::string indexStr = std::to_string(bufferIndex);
+        std::string varName = "buffer_" + indexStr;
+        std::string macroName = "BUFFER_" + indexStr;
         std::string guardName = macroName + "_H";
 
         int components = 1;
