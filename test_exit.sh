@@ -63,7 +63,7 @@ fi
 echo "5️⃣  Testing preprocessor mode..."
 TEST_OUTPUT="/tmp/preprocessed-test-out.glsl"
 rm -f "$TEST_OUTPUT"
-./build/fork-eater --preprocess test_project -o "$TEST_OUTPUT" -w 1920 -H 1080 > /dev/null 2>&1
+./build/fork-eater --preprocess project/test -o "$TEST_OUTPUT" -w 1920 -H 1080 > /dev/null 2>&1
 if [ $? -ne 0 ]; then
     echo "   ❌ Preprocessor mode exited with failure code"
     exit 1

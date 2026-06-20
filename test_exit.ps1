@@ -64,7 +64,7 @@ if (-not $proc.HasExited) {
 Write-Host "5. Testing preprocessor mode..."
 $testOutput = Join-Path $env:TEMP "preprocessed-test-out.glsl"
 if (Test-Path $testOutput) { Remove-Item $testOutput }
-$exitPrep = Invoke-ForkEater @("--preprocess", "test_project", "-o", $testOutput, "-w", "1920", "-H", "1080")
+$exitPrep = Invoke-ForkEater @("--preprocess", "project/test", "-o", $testOutput, "-w", "1920", "-H", "1080")
 if ($exitPrep -ne 0) {
     Write-Host "   Preprocessor mode exited with failure code ($exitPrep)"
     exit 1

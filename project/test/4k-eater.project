@@ -6,6 +6,19 @@
   "bpm": 120.0,
   "beatsPerBar": 4,
   "audio": "assets/export_01.mp3",
+  "buffers": [
+    {
+      "name": "u_colors",
+      "type": "vec3",
+      "data": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    },
+    {
+      "name": "u_offsets",
+      "type": "vec2",
+      "data": [0.5, 0.5, -0.5, -0.5],
+      "striped": true
+    }
+  ],
   "passes": [
     {
       "name": "main2",

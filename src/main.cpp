@@ -367,7 +367,7 @@ int main(int argc, char* argv[]) {
     std::string preprocessInputPath;
     std::string outputPath;
     bool exportBufferMode = false;
-    std::string exportBufferName;
+    std::string exportBufferIndexStr;
     int xres = 0;
     int yres = 0;
     std::string passName;
@@ -486,10 +486,10 @@ int main(int argc, char* argv[]) {
         else if (arg == "--export-buffer-header") {
             exportBufferMode = true;
             if (i + 1 < argc) {
-                exportBufferName = argv[i + 1];
+                exportBufferIndexStr = argv[i + 1];
                 i++;
             } else {
-                LOG_ERROR("Missing buffer name for --export-buffer-header");
+                LOG_ERROR("Missing buffer index for --export-buffer-header");
                 return 1;
             }
         }
@@ -595,22 +595,23 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        // Find buffer
-        const ShaderBuffer* selectedBuffer = nullptr;
-        for (const auto& buffer : proj.getManifest().buffers) {
-            if (buffer.name == exportBufferName) {
-                selectedBuffer = &buffer;
-                break;
-            }
-        }
-
-        if (!selectedBuffer) {
-            LOG_ERROR("Buffer '{}' not found in project", exportBufferName);
+        // Find buffer by index
+        int bufferIndex = -1;
+        try {
+            bufferIndex = std::stoi(exportBufferIndexStr);
+        } catch (const std::exception&) {
+            LOG_ERROR("Invalid buffer index: {}", exportBufferIndexStr);
             return 1;
         }
 
+        if (bufferIndex < 0 || bufferIndex >= static_cast<int>(proj.getManifest().buffers.size())) {
+            LOG_ERROR("Buffer index {} out of range (project has {} buffers)", bufferIndex, proj.getManifest().buffers.size());
+            return 1;
+        }
+        const ShaderBuffer* selectedBuffer = &proj.getManifest().buffers[bufferIndex];
+
         // Generate C-header content
-        std::string cleanName = exportBufferName;
+        std::string cleanName = selectedBuffer->name;
         if (cleanName.rfind("u_", 0) == 0) {
             cleanName = cleanName.substr(2);
         } else if (cleanName.rfind("u", 0) == 0 && cleanName.size() > 1 && std::isupper(cleanName[1])) {
@@ -633,7 +634,7 @@ int main(int argc, char* argv[]) {
         header << "#ifndef " << guardName << "\n";
         header << "#define " << guardName << "\n\n";
         header << "#define " << macroName << "_LENGTH " << length << "\n";
-        header << "#define " << macroName << "_NAME \"" << exportBufferName << "\"\n\n";
+        header << "#define " << macroName << "_NAME \"" << selectedBuffer->name << "\"\n\n";
         std::vector<float> exportData = selectedBuffer->data;
         if (selectedBuffer->striped) {
             exportData.resize(selectedBuffer->data.size());
@@ -689,7 +690,7 @@ int main(int argc, char* argv[]) {
         out << header.str();
         out.close();
 
-        LOG_SUCCESS("Successfully exported buffer '{}' to C-header: {}", exportBufferName, outputPath);
+        LOG_SUCCESS("Successfully exported buffer '{}' to C-header: {}", selectedBuffer->name, outputPath);
         return 0;
     }
 
@@ -1025,7 +1026,7 @@ void printUsage(const char* programName) {
     LOG_INFO("  --render-scale-mode MODE    Set render scale mode (chunk, resolution)");
     LOG_INFO("  --render-scale FACTOR       Set initial render scale factor (0.0 - 1.0)");
     LOG_INFO("  --preprocess, -p PATH       Preprocess shader file or project directory");
-    LOG_INFO("  --export-buffer-header NAME Export project buffer values to a C-header file");
+    LOG_INFO("  --export-buffer-header INDEX Export project buffer values (by manifest index) to a C-header file");
     LOG_INFO("  -o, --output PATH           Output baked/preprocessed shader or exported buffer header to path");
     LOG_INFO("  -w, --width VAL             Width (XRES) for resolution substitution");
     LOG_INFO("  -H, --height VAL            Height (YRES) for resolution substitution");

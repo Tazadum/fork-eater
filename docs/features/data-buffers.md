@@ -52,10 +52,10 @@ Buffers are defined in the `buffers` section of the `4k-eater` manifest file (lo
 
 ## Exporting Buffer Headers & Striped Unpacking
 
-To support production and build baking pipelines, Fork Eater provides a CLI option to export any manifest buffer to a size-optimized C/C++ header:
+To support production and build baking pipelines, Fork Eater provides a CLI option to export any manifest buffer (by its 0-based index in the `buffers` array) to a size-optimized C/C++ header:
 
 ```bash
-./build/fork-eater <project_path> --export-buffer-header u_corners -o build/buffer_corners.h
+./build/fork-eater <project_path> --export-buffer-header 0 -o build/buffer_corners.h
 ```
 
 ### Unpacking Function for Striped UBOs
