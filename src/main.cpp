@@ -632,7 +632,8 @@ int main(int argc, char* argv[]) {
         std::stringstream header;
         header << "#ifndef " << guardName << "\n";
         header << "#define " << guardName << "\n\n";
-        header << "#define " << macroName << "_LENGTH " << length << "\n\n";
+        header << "#define " << macroName << "_LENGTH " << length << "\n";
+        header << "#define " << macroName << "_NAME \"" << exportBufferName << "\"\n\n";
         std::vector<float> exportData = selectedBuffer->data;
         if (selectedBuffer->striped) {
             exportData.resize(selectedBuffer->data.size());
