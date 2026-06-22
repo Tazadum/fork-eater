@@ -1,5 +1,6 @@
 #include "ShaderProject.h"
 #include "ShaderManager.h"
+#include <cstring>
 #include "ShaderTemplates.h"
 #include "GeneratedShaderLibraries.h"
 #include <fstream>
@@ -15,6 +16,40 @@
 using json = nlohmann::json;
 
 namespace fs = std::filesystem;
+
+static float quantizeFloat(float value, int mantissaBits) {
+    if (mantissaBits >= 23 || mantissaBits < 0) {
+        return value;
+    }
+    uint32_t valInt;
+    std::memcpy(&valInt, &value, sizeof(float));
+    
+    uint32_t sign = valInt & 0x80000000;
+    uint32_t absVal = valInt & 0x7FFFFFFF;
+    
+    uint32_t exponent = absVal >> 23;
+    if (exponent == 0xFF) {
+        return value; // Keep Inf/NaN unchanged
+    }
+    
+    int bitsToZero = 23 - mantissaBits;
+    if (bitsToZero > 0) {
+        // Round to nearest: add half quantum
+        uint32_t halfQuantum = 1U << (bitsToZero - 1);
+        if (exponent > 0) { // Only round normal numbers
+            absVal += halfQuantum;
+        }
+        
+        // Mask out the lower bits
+        uint32_t mask = ~((1U << bitsToZero) - 1);
+        absVal &= mask;
+    }
+    
+    uint32_t quantizedInt = sign | absVal;
+    float quantized;
+    std::memcpy(&quantized, &quantizedInt, sizeof(float));
+    return quantized;
+}
 
 ShaderProject::ShaderProject()
     : m_isLoaded(false) {
@@ -266,6 +301,7 @@ bool ShaderProject::parseManifestJson(const std::string& jsonContent) {
                 }
                 buffer.file = bufferJson.value("file", "");
                 buffer.striped = bufferJson.value("striped", false);
+                buffer.precision = bufferJson.value("precision", -1);
                 
                 if (bufferJson.contains("data") && bufferJson["data"].is_array()) {
                     buffer.data = bufferJson["data"].get<std::vector<float>>();
@@ -296,6 +332,12 @@ bool ShaderProject::parseManifestJson(const std::string& jsonContent) {
                         }
                     } else {
                         LOG_ERROR("Buffer file does not exist: {}", filePath.string());
+                    }
+                }
+                
+                if (buffer.precision >= 0) {
+                    for (auto& val : buffer.data) {
+                        val = quantizeFloat(val, buffer.precision);
                     }
                 }
                 
@@ -359,6 +401,9 @@ std::string ShaderProject::generateManifestJson() const {
         }
         if (buffer.striped) {
             bufferJson["striped"] = true;
+        }
+        if (buffer.precision >= 0) {
+            bufferJson["precision"] = buffer.precision;
         }
         j["buffers"].push_back(bufferJson);
     }
