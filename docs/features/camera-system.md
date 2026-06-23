@@ -9,6 +9,7 @@ The Fork Eater camera system provides a robust set of tools for navigating 3D sc
 - **DPI-Aware Mouse Support**: Relative mouse movement (`u_fork_cam_mouse`) is used to rotate the view.
 - **Field of View (FOV)**: Adjustable FOV in degrees (10° to 150°) with automatic focal length calculation.
 - **Movement Modifiers**: 
+    - **Alt**: Super fast movement (10x speed).
     - **Shift**: Fast movement (3x speed).
     - **Ctrl**: Slow/Precision movement (0.1x speed).
 - **Persistence**: Camera position is automatically saved to `.4k-eater.local` in the project directory.

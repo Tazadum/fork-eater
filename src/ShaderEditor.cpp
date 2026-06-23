@@ -71,7 +71,8 @@ void ShaderEditor::render() {
         float deltaTime = ImGui::GetIO().DeltaTime;
         
         float speedMultiplier = 1.0f;
-        if (ImGui::GetIO().KeyShift) speedMultiplier = 3.0f;
+        if (ImGui::GetIO().KeyAlt) speedMultiplier = 10.0f;
+        else if (ImGui::GetIO().KeyShift) speedMultiplier = 3.0f;
         else if (ImGui::GetIO().KeyCtrl) speedMultiplier = 0.1f;
         
         const float moveSpeed = 2.0f * speedMultiplier;
