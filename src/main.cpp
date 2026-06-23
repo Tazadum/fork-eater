@@ -1,4 +1,6 @@
 #include <thread>
+#include <cmath>
+#include <sstream>
 
 #include "glad.h"
 #include "glad.h"
@@ -641,7 +643,22 @@ int main(int argc, char* argv[]) {
         header << "static const float " << varName << "[" << exportData.size() << "] = {\n    ";
 
         for (size_t idx = 0; idx < exportData.size(); ++idx) {
-            header << exportData[idx] << "f";
+            float val = exportData[idx];
+            std::string floatStr;
+            if (std::isnan(val)) {
+                floatStr = "0.0";
+            } else if (std::isinf(val)) {
+                floatStr = (val < 0.0f) ? "-3.40282347e+38" : "3.40282347e+38";
+            } else {
+                std::ostringstream ss;
+                ss.precision(9);
+                ss << val;
+                floatStr = ss.str();
+                if (floatStr.find('.') == std::string::npos && floatStr.find('e') == std::string::npos && floatStr.find('E') == std::string::npos) {
+                    floatStr += ".0";
+                }
+            }
+            header << floatStr << "f";
             if (idx + 1 < exportData.size()) {
                 header << ", ";
                 if ((idx + 1) % 8 == 0) {
